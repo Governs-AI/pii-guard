@@ -94,7 +94,9 @@ async function handleInterceptedMessage(request, sender) {
       action: policyDecision.action,
       reason: policyDecision.reason,
       redactedMessage: policyDecision.redactedMessage,
-      originalMessage: message
+      redactionLog: policyDecision.redactionLog || [],
+      originalMessage: message,
+      entities: policyDecision.entities || []
     };
     
   } catch (error) {
@@ -117,9 +119,11 @@ async function getSettings() {
       enabled: true,
       apiKey: '',
       orgId: '',
+      precheckApiUrl: '', // Custom API URL (optional)
       policyMode: 'allow', // 'allow', 'redact', 'block'
       enabledPlatforms: ['chatgpt', 'claude', 'gemini'],
       autoRedact: true,
+      redactionStrategy: 'full', // 'full', 'partial', 'hash', 'smart'
       debugMode: false
     }, (settings) => {
       resolve(settings);

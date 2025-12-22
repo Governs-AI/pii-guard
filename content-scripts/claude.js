@@ -42,7 +42,12 @@
           
         case 'REDACT':
           debugLog('Message redacted:', response.redactedMessage);
-          showNotification('Sensitive information was redacted', 'warning');
+          debugLog('Redaction log:', response.redactionLog);
+          showNotification(
+            `Redacted ${response.entities?.length || 0} PII entities`,
+            'warning',
+            { redactionLog: response.redactionLog }
+          );
           sendCallback(response.redactedMessage);
           break;
           

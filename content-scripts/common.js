@@ -23,11 +23,24 @@ async function sendToBackground(type, data) {
  * Shows a notification to the user
  * @param {string} message - Message to display
  * @param {string} type - 'info', 'warning', 'error', 'success'
+ * @param {object} options - Additional options (duration, redactionLog, etc.)
  */
-function showNotification(message, type = 'info') {
+function showNotification(message, type = 'info', options = {}) {
   const notification = document.createElement('div');
   notification.className = `governs-ai-notification governs-ai-${type}`;
-  notification.textContent = message;
+  
+  // Build notification content
+  let content = message;
+  
+  // Add redaction log if provided
+  if (options.redactionLog && options.redactionLog.length > 0) {
+    const logText = options.redactionLog
+      .map(log => `${log.type}: ${log.original} → ${log.redacted}`)
+      .join('\n');
+    content += '\n\n' + logText;
+  }
+  
+  notification.textContent = content;
   
   // Styling
   Object.assign(notification.style, {
@@ -43,16 +56,27 @@ function showNotification(message, type = 'info') {
     fontFamily: 'system-ui, -apple-system, sans-serif',
     fontSize: '14px',
     maxWidth: '400px',
-    animation: 'slideIn 0.3s ease-out'
+    maxHeight: '400px',
+    overflowY: 'auto',
+    whiteSpace: 'pre-wrap',
+    animation: 'slideIn 0.3s ease-out',
+    cursor: 'pointer'
+  });
+  
+  // Add click to dismiss
+  notification.addEventListener('click', () => {
+    notification.style.animation = 'slideOut 0.3s ease-out';
+    setTimeout(() => notification.remove(), 300);
   });
   
   document.body.appendChild(notification);
   
-  // Auto-remove after 5 seconds
+  // Auto-remove after duration (default 5 seconds, longer if redaction log)
+  const duration = options.duration || (options.redactionLog ? 8000 : 5000);
   setTimeout(() => {
     notification.style.animation = 'slideOut 0.3s ease-out';
     setTimeout(() => notification.remove(), 300);
-  }, 5000);
+  }, duration);
 }
 
 /**
