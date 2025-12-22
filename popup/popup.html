@@ -7,8 +7,53 @@
 </head>
 <body>
   <div id="popup-container">
-    <h1>GovernsAI</h1>
-    <div id="status">Extension loaded</div>
+    <div class="header">
+      <h1>🛡️ GovernsAI</h1>
+      <div id="status-badge" class="badge">Loading...</div>
+    </div>
+    
+    <div class="section">
+      <h2>Status</h2>
+      <div class="status-item">
+        <span>Extension</span>
+        <span id="extension-status" class="value">...</span>
+      </div>
+      <div class="status-item">
+        <span>Configuration</span>
+        <span id="config-status" class="value">...</span>
+      </div>
+      <div class="status-item">
+        <span>Policy Mode</span>
+        <span id="policy-mode" class="value">...</span>
+      </div>
+    </div>
+    
+    <div class="section">
+      <h2>Protected Platforms</h2>
+      <div id="platforms-list" class="platforms">
+        <div class="platform-item">
+          <input type="checkbox" id="platform-chatgpt" value="chatgpt">
+          <label for="platform-chatgpt">ChatGPT</label>
+        </div>
+        <div class="platform-item">
+          <input type="checkbox" id="platform-claude" value="claude">
+          <label for="platform-claude">Claude</label>
+        </div>
+        <div class="platform-item">
+          <input type="checkbox" id="platform-gemini" value="gemini">
+          <label for="platform-gemini">Gemini</label>
+        </div>
+      </div>
+    </div>
+    
+    <div class="actions">
+      <button id="open-options" class="btn btn-primary">Settings</button>
+      <button id="toggle-debug" class="btn btn-secondary">Debug Mode</button>
+    </div>
+    
+    <div class="footer">
+      <small>Version 0.1.0</small>
+    </div>
   </div>
   <script src="popup.js"></script>
 </body>

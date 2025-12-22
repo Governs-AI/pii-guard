@@ -1,16 +1,172 @@
 /* Popup styles */
 body {
-  width: 300px;
-  padding: 16px;
+  width: 320px;
+  margin: 0;
+  padding: 0;
   font-family: system-ui, -apple-system, sans-serif;
+  background: #f8f9fa;
 }
 
 #popup-container {
-  text-align: center;
+  padding: 16px;
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+  padding-bottom: 12px;
+  border-bottom: 2px solid #e0e0e0;
 }
 
 h1 {
   font-size: 20px;
-  margin: 0 0 16px 0;
+  margin: 0;
+  color: #333;
+}
+
+h2 {
+  font-size: 14px;
+  font-weight: 600;
+  color: #666;
+  margin: 0 0 8px 0;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.badge {
+  padding: 4px 12px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.badge-success {
+  background: #d4edda;
+  color: #155724;
+}
+
+.badge-error {
+  background: #f8d7da;
+  color: #721c24;
+}
+
+.section {
+  background: white;
+  padding: 12px;
+  border-radius: 8px;
+  margin-bottom: 12px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+.status-item {
+  display: flex;
+  justify-content: space-between;
+  padding: 8px 0;
+  border-bottom: 1px solid #f0f0f0;
+  font-size: 14px;
+}
+
+.status-item:last-child {
+  border-bottom: none;
+}
+
+.status-item span {
+  color: #333;
+}
+
+.status-item .value {
+  font-weight: 500;
+}
+
+.platforms {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.platform-item {
+  display: flex;
+  align-items: center;
+  padding: 8px;
+  border-radius: 6px;
+  transition: background 0.2s;
+}
+
+.platform-item:hover {
+  background: #f8f9fa;
+}
+
+.platform-item input[type="checkbox"] {
+  margin: 0 8px 0 0;
+  cursor: pointer;
+}
+
+.platform-item label {
+  cursor: pointer;
+  user-select: none;
+  flex: 1;
+  font-size: 14px;
+}
+
+.actions {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.btn {
+  flex: 1;
+  padding: 10px 16px;
+  border: none;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-primary {
+  background: #0066cc;
+  color: white;
+}
+
+.btn-primary:hover {
+  background: #0052a3;
+}
+
+.btn-secondary {
+  background: #6c757d;
+  color: white;
+}
+
+.btn-secondary:hover {
+  background: #545b62;
+}
+
+.btn-secondary.active {
+  background: #28a745;
+}
+
+.footer {
+  text-align: center;
+  color: #999;
+  font-size: 11px;
+}
+
+.message {
+  position: fixed;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #333;
+  color: white;
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-size: 12px;
+  transition: opacity 0.3s;
+  z-index: 1000;
 }
 
