@@ -126,6 +126,7 @@ async function getSettings() {
       enabled: true,
       apiKey: '',
       orgId: '',
+      userId: '', // Persistent User ID
       precheckApiUrl: DEFAULT_PRECHECK_API_BASE_URL,
       dashboardUrl: DEFAULT_DASHBOARD_URL,
       enableDashboardLogging: false,
@@ -159,6 +160,13 @@ async function getSettings() {
           NAME: false, ADDRESS: true, IP_ADDRESS: true, API_KEY: true, PASSWORD: true
         };
       }
+
+      // Generate and save User ID if missing
+      if (!settings.userId) {
+        settings.userId = crypto.randomUUID();
+        chrome.storage.local.set({ userId: settings.userId });
+      }
+
       resolve(settings);
     });
   });

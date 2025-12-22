@@ -92,7 +92,18 @@ async function callPrecheckAPIWithRetry(apiUrl, text, apiKey, orgId, corrId, set
       scope: DEFAULT_SCOPE,
       raw_text: text,
       tags: [], // Keep empty or add user-defined tags later
-      corr_id: corrId
+      corr_id: corrId,
+      user_id: settings.userId || 'anonymous-user',
+      tool_config: {
+        tool_name: DEFAULT_TOOL,
+        scope: DEFAULT_SCOPE,
+        direction: "egress", // Browser prompt is outgoing
+        metadata: {
+           client: "governsai-extension",
+           version: "1.0.0"
+        }
+      },
+      budget_context: null // Placeholder for compatibility
     };
     
     // Add Policy Configuration if local settings exist
@@ -156,10 +167,10 @@ async function callPrecheckAPIWithRetry(apiUrl, text, apiKey, orgId, corrId, set
  */
 function buildPolicyConfig(localPolicy) {
   const mode = localPolicy.mode || 'redact';
-  // Map local modes to API actions: 'block' -> 'block', 'redact' -> 'redact', 'warn' -> 'pass_through' (with warning handled client-side)
-  // Actually, if 'warn', we probably want 'redact' or 'pass_through' depending on if we want the API to tag it.
-  // Let's assume 'warn' means 'pass_through' for the API, and we handle the warning based on the response detections.
-  const action = mode === 'warn' ? 'pass_through' : mode; 
+  // Map local modes to API actions
+  let action = 'redact';
+  if (mode === 'block') action = 'block';
+  if (mode === 'warn') action = 'pass_through';
   
   const piiMap = {
     'EMAIL': 'PII:email_address',
@@ -175,18 +186,16 @@ function buildPolicyConfig(localPolicy) {
 
   const allowPii = {};
   
-  // Iterate through enabled PII types and set action
+  // Iterate through PII types and set action
   if (localPolicy.piiTypes) {
-    Object.entries(localPolicy.piiTypes).forEach(([type, enabled]) => {
-      const apiKey = piiMap[type];
-      if (apiKey) {
-        if (enabled) {
-          // If enabled, apply the policy action
-          allowPii[apiKey] = action; 
-        } else {
-          // If disabled, explicitly pass through
-          allowPii[apiKey] = 'pass_through';
-        }
+    Object.entries(piiMap).forEach(([localKey, apiKey]) => {
+      const enabled = localPolicy.piiTypes[localKey];
+      if (enabled) {
+        // If enabled, apply the policy action (redact, block, pass_through)
+        allowPii[apiKey] = action; 
+      } else {
+        // If disabled, explicitly pass through
+        allowPii[apiKey] = 'pass_through';
       }
     });
   }
@@ -194,12 +203,12 @@ function buildPolicyConfig(localPolicy) {
   return {
     version: "v1",
     defaults: {
-      ingress: { action: "pass_through" },
-      egress: { action: action }
+      ingress: { action: "redact" },
+      egress: { action: "redact" }
     },
     tool_access: {
       [DEFAULT_TOOL]: {
-        direction: "ingress", // Matching user example
+        direction: "ingress",
         action: null,
         allow_pii: allowPii
       }
