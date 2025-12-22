@@ -7,6 +7,8 @@
   debugLog('ChatGPT interceptor loaded');
   
   let isProcessing = false;
+  let isSyntheticSend = false;
+  let activeInput = null;
   
   /**
    * Intercepts the message submission
@@ -86,6 +88,11 @@
         
         // Intercept Enter key press
         textarea.addEventListener('keydown', async (e) => {
+          activeInput = textarea;
+          if (isSyntheticSend) {
+            isSyntheticSend = false;
+            return;
+          }
           if (e.key === 'Enter' && !e.shiftKey) {
             const message = textarea.value || textarea.textContent;
             
@@ -94,28 +101,11 @@
               e.stopPropagation();
               
               await interceptMessage(message, (finalMessage) => {
-                // Update textarea with potentially redacted message
-                if (textarea.value !== undefined) {
-                  textarea.value = finalMessage;
-                } else {
-                  textarea.textContent = finalMessage;
-                }
+                applyMessageToInput(textarea, finalMessage);
                 
                 // Trigger the original send
                 const sendButton = document.querySelector('button[data-testid="send-button"], button[aria-label*="Send"]');
-                if (sendButton && !sendButton.disabled) {
-                  sendButton.click();
-                } else {
-                  // Fallback: dispatch Enter event
-                  const enterEvent = new KeyboardEvent('keydown', {
-                    key: 'Enter',
-                    code: 'Enter',
-                    which: 13,
-                    keyCode: 13,
-                    bubbles: true
-                  });
-                  textarea.dispatchEvent(enterEvent);
-                }
+                triggerSend(sendButton, textarea);
               });
             }
           }
@@ -130,7 +120,11 @@
             sendButton.setAttribute('data-governs-intercepted', 'true');
             
             sendButton.addEventListener('click', async (e) => {
-              const textarea = document.querySelector(textareaSelector);
+              if (isSyntheticSend) {
+                isSyntheticSend = false;
+                return;
+              }
+              const textarea = getActiveInput(textareaSelector);
               const message = textarea?.value || textarea?.textContent;
               
               if (message && message.trim()) {
@@ -138,20 +132,8 @@
                 e.stopPropagation();
                 
                 await interceptMessage(message, (finalMessage) => {
-                  if (textarea.value !== undefined) {
-                    textarea.value = finalMessage;
-                  } else {
-                    textarea.textContent = finalMessage;
-                  }
-                  
-                  // Remove interception temporarily to allow actual send
-                  sendButton.removeAttribute('data-governs-intercepted');
-                  sendButton.click();
-                  
-                  // Re-add interception after a delay
-                  setTimeout(() => {
-                    sendButton.setAttribute('data-governs-intercepted', 'true');
-                  }, 100);
+                  applyMessageToInput(textarea, finalMessage);
+                  triggerSend(sendButton, textarea);
                 });
               }
             }, true);
@@ -190,5 +172,68 @@
     }
   }).observe(document, { subtree: true, childList: true });
   
-})();
+  function applyMessageToInput(input, value) {
+    if (!input) return;
+    const isTextArea = input.tagName === 'TEXTAREA';
+    const isInput = input.tagName === 'INPUT';
+    const isEditable = input.isContentEditable;
 
+    if (isTextArea || isInput) {
+      const proto = isTextArea ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+      const nativeSetter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
+      if (nativeSetter) {
+        nativeSetter.call(input, value);
+      } else {
+        input.value = value;
+      }
+    } else if (isEditable) {
+      input.focus();
+      const selected = document.execCommand('selectAll', false, null);
+      const inserted = document.execCommand('insertText', false, value);
+      if (!selected || !inserted) {
+        input.textContent = value;
+      }
+    } else {
+      input.textContent = value;
+    }
+    
+    const inputEvent = typeof InputEvent === 'function'
+      ? new InputEvent('input', { bubbles: true, data: value, inputType: 'insertText' })
+      : new Event('input', { bubbles: true });
+    input.dispatchEvent(inputEvent);
+  }
+  
+  function triggerSend(sendButton, textarea) {
+    isSyntheticSend = true;
+    requestAnimationFrame(() => {
+      if (sendButton && !sendButton.disabled) {
+        sendButton.click();
+        return;
+      }
+      if (textarea) {
+        const enterEvent = new KeyboardEvent('keydown', {
+          key: 'Enter',
+          code: 'Enter',
+          which: 13,
+          keyCode: 13,
+          bubbles: true
+        });
+        textarea.dispatchEvent(enterEvent);
+        return;
+      }
+      isSyntheticSend = false;
+    });
+  }
+
+  function getActiveInput(selector) {
+    const active = document.activeElement;
+    if (active && (active.tagName === 'TEXTAREA' || active.tagName === 'INPUT' || active.isContentEditable)) {
+      return active;
+    }
+    if (activeInput && document.contains(activeInput)) {
+      return activeInput;
+    }
+    return document.querySelector(selector);
+  }
+  
+})();
