@@ -1,0 +1,16 @@
+/* Popup styles */
+body {
+  width: 300px;
+  padding: 16px;
+  font-family: system-ui, -apple-system, sans-serif;
+}
+
+#popup-container {
+  text-align: center;
+}
+
+h1 {
+  font-size: 20px;
+  margin: 0 0 16px 0;
+}
+

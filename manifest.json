@@ -1,0 +1,47 @@
+{
+  "manifest_version": 3,
+  "name": "GovernsAI Extension",
+  "version": "0.1.0",
+  "description": "AI governance extension for ChatGPT, Claude, and Gemini",
+  "permissions": [
+    "storage",
+    "activeTab"
+  ],
+  "host_permissions": [
+    "https://chat.openai.com/*",
+    "https://claude.ai/*",
+    "https://gemini.google.com/*"
+  ],
+  "background": {
+    "service_worker": "background/service-worker.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://chat.openai.com/*"],
+      "js": ["content-scripts/common.js", "content-scripts/chatgpt.js"]
+    },
+    {
+      "matches": ["https://claude.ai/*"],
+      "js": ["content-scripts/common.js", "content-scripts/claude.js"]
+    },
+    {
+      "matches": ["https://gemini.google.com/*"],
+      "js": ["content-scripts/common.js", "content-scripts/gemini.js"]
+    }
+  ],
+  "action": {
+    "default_popup": "popup/popup.html",
+    "default_icon": {
+      "16": "assets/icons/icon16.png",
+      "48": "assets/icons/icon48.png",
+      "128": "assets/icons/icon128.png"
+    }
+  },
+  "options_page": "options/options.html",
+  "icons": {
+    "16": "assets/icons/icon16.png",
+    "48": "assets/icons/icon48.png",
+    "128": "assets/icons/icon128.png"
+  }
+}
+

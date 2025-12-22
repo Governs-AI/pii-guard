@@ -1,0 +1,13 @@
+/* Settings page styles */
+body {
+  font-family: system-ui, -apple-system, sans-serif;
+  padding: 24px;
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+h1 {
+  font-size: 24px;
+  margin-bottom: 24px;
+}
+
