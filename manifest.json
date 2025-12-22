@@ -5,19 +5,29 @@
   "description": "AI governance extension for ChatGPT, Claude, and Gemini",
   "permissions": [
     "storage",
-    "activeTab"
+    "activeTab",
+    "permissions"
   ],
   "host_permissions": [
     "https://chat.openai.com/*",
+    "https://chatgpt.com/*",
+    "https://*.chatgpt.com/*",
     "https://claude.ai/*",
-    "https://gemini.google.com/*"
+    "https://gemini.google.com/*",
+    "https://app.governsai.com/*",
+    "http://localhost/*",
+    "http://127.0.0.1/*"
+  ],
+  "optional_host_permissions": [
+    "https://*/*",
+    "http://*/*"
   ],
   "background": {
     "service_worker": "background/service-worker.js"
   },
   "content_scripts": [
     {
-      "matches": ["https://chat.openai.com/*"],
+      "matches": ["https://chat.openai.com/*", "https://chatgpt.com/*", "https://*.chatgpt.com/*"],
       "js": ["content-scripts/common.js", "content-scripts/chatgpt.js"]
     },
     {
@@ -34,4 +44,3 @@
   },
   "options_page": "options/options.html"
 }
-

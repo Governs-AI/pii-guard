@@ -7,12 +7,61 @@
 </head>
 <body>
   <div id="options-container">
-    <h1>GovernsAI Settings</h1>
-    <div id="settings-form">
-      <!-- Settings will be added here -->
-    </div>
+    <header>
+      <h1>GovernsAI Settings</h1>
+      <p class="subtitle">Configure the Precheck endpoint and dashboard logging.</p>
+    </header>
+    <form id="settings-form">
+      <section class="card">
+        <h2>Precheck API</h2>
+        <label for="precheck-api-url">Precheck API Endpoint</label>
+        <input id="precheck-api-url" type="url" placeholder="https://app.governsai.com/api/v1" autocomplete="off">
+        <div class="preset-group">
+          <span class="label">Presets</span>
+          <label class="radio">
+            <input type="radio" name="precheck-preset" value="local">
+            Local (localhost:8000)
+          </label>
+          <label class="radio">
+            <input type="radio" name="precheck-preset" value="console">
+            GovernsAI Console (app.governsai.com)
+          </label>
+          <label class="radio">
+            <input type="radio" name="precheck-preset" value="custom">
+            Custom URL
+          </label>
+        </div>
+        <div class="actions">
+          <button id="test-connection" type="button" class="btn">Test Connection</button>
+          <span id="connection-status" class="status">Status: Not tested</span>
+        </div>
+        <p class="hint">Connection test uses <code>/api/v1/health</code>.</p>
+      </section>
+
+      <section class="card">
+        <h2>Credentials</h2>
+        <label for="api-key">API Key</label>
+        <input id="api-key" type="password" placeholder="Paste your API key" autocomplete="off">
+        <label for="org-id">Org ID</label>
+        <input id="org-id" type="text" placeholder="Optional organization ID" autocomplete="off">
+      </section>
+
+      <section class="card">
+        <h2>Dashboard Logging (Optional)</h2>
+        <label for="dashboard-url">Dashboard URL</label>
+        <input id="dashboard-url" type="url" placeholder="https://app.governsai.com" autocomplete="off">
+        <label class="checkbox">
+          <input id="enable-logging" type="checkbox">
+          Enable dashboard logging
+        </label>
+      </section>
+
+      <div class="actions footer-actions">
+        <button id="save-settings" type="submit" class="btn primary">Save Settings</button>
+        <span id="save-status" class="status" role="status" aria-live="polite"></span>
+      </div>
+    </form>
   </div>
   <script src="options.js"></script>
 </body>
 </html>
-

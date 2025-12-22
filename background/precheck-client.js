@@ -2,10 +2,29 @@
 // Calls GovernsAI Precheck API for PII detection
 
 // Configuration constants
-const PRECHECK_API_URL = 'https://api.governsai.com/api/precheck';
+const DEFAULT_PRECHECK_API_BASE_URL = 'https://app.governsai.com/api/v1';
 const MAX_RETRIES = 3;
 const INITIAL_RETRY_DELAY = 1000; // 1 second
 const MAX_RETRY_DELAY = 10000; // 10 seconds
+const DEFAULT_TOOL = 'browser.prompt';
+const DEFAULT_SCOPE = 'ai.prompt';
+
+function normalizeUrl(value) {
+  return (value || '').trim().replace(/\/+$/, '');
+}
+
+function deriveBaseUrl(precheckApiUrl) {
+  const normalized = normalizeUrl(precheckApiUrl || DEFAULT_PRECHECK_API_BASE_URL);
+  if (normalized.toLowerCase().endsWith('/precheck')) {
+    return normalized.slice(0, -'/precheck'.length);
+  }
+  return normalized;
+}
+
+function buildPrecheckUrl(precheckApiUrl) {
+  const baseUrl = deriveBaseUrl(precheckApiUrl);
+  return `${baseUrl}/precheck`;
+}
 
 /**
  * Scans text for PII using the Precheck API with retry logic
@@ -16,23 +35,22 @@ const MAX_RETRY_DELAY = 10000; // 10 seconds
 async function scanForPII(text, settings) {
   const { apiKey, orgId, precheckApiUrl } = settings;
   
-  // If no API key configured, use fallback detection
   if (!apiKey) {
-    console.warn('[GovernsAI] No API key configured, using fallback PII detection');
-    return fallbackPIIDetection(text);
+    console.warn('[GovernsAI] No API key configured; Precheck may reject requests');
   }
   
   // Use custom API URL if provided, otherwise use default
-  const apiUrl = precheckApiUrl || PRECHECK_API_URL;
+  const apiUrl = buildPrecheckUrl(precheckApiUrl || DEFAULT_PRECHECK_API_BASE_URL);
+  const corrId = generateCorrelationId();
   
   // Store original message for fallback
   const originalMessage = text;
   
   try {
-    const result = await callPrecheckAPIWithRetry(apiUrl, text, apiKey, orgId);
+    const result = await callPrecheckAPIWithRetry(apiUrl, text, apiKey, orgId, corrId);
     
     // Transform API response to internal format
-    return transformAPIResponse(result, originalMessage);
+    return transformAPIResponse(result, originalMessage, { corrId });
     
   } catch (error) {
     console.error('[GovernsAI] Precheck API call failed after retries:', error);
@@ -51,24 +69,32 @@ async function scanForPII(text, settings) {
  * @param {number} attempt - Current attempt number (starts at 1)
  * @returns {Promise<object>} API response
  */
-async function callPrecheckAPIWithRetry(apiUrl, text, apiKey, orgId, attempt = 1) {
+async function callPrecheckAPIWithRetry(apiUrl, text, apiKey, orgId, corrId, attempt = 1) {
   try {
     console.log(`[GovernsAI] Precheck API call attempt ${attempt}/${MAX_RETRIES}`);
     
+    const headers = {
+      'Content-Type': 'application/json'
+    };
+    if (apiKey) {
+      headers['X-Governs-Key'] = apiKey;
+    }
+    if (orgId) {
+      headers['X-Org-Id'] = orgId;
+    }
+    
+    const payload = {
+      tool: DEFAULT_TOOL,
+      scope: DEFAULT_SCOPE,
+      raw_text: text,
+      tags: [],
+      corr_id: corrId
+    };
+    
     const response = await fetch(apiUrl, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`,
-        'X-Org-Id': orgId || ''
-      },
-      body: JSON.stringify({
-        text: text,
-        context: {
-          source: 'browser_extension',
-          timestamp: new Date().toISOString()
-        }
-      })
+      headers,
+      body: JSON.stringify(payload)
     });
     
     // Handle HTTP errors
@@ -120,7 +146,39 @@ async function callPrecheckAPIWithRetry(apiUrl, text, apiKey, orgId, attempt = 1
  * @param {string} originalMessage - Original message text
  * @returns {object} Transformed response
  */
-function transformAPIResponse(apiResponse, originalMessage) {
+function transformAPIResponse(apiResponse, originalMessage, requestContext = {}) {
+  if (apiResponse && typeof apiResponse.decision === 'string') {
+    const reasons = Array.isArray(apiResponse.reasons) ? apiResponse.reasons : [];
+    const detections = reasons
+      .map(extractDetectionFromReason)
+      .filter(Boolean);
+    const entities = detections.map(detection => ({
+      type: normalizeEntityType(detection.type),
+      value: detection.value,
+      confidence: detection.confidence || 1.0,
+      position: detection.position || null,
+      start: detection.position?.start,
+      end: detection.position?.end
+    }));
+    const hasPII = reasons.some((reason) => typeof reason === 'string' && reason.includes('pii.')) ||
+      apiResponse.decision.toLowerCase() !== 'allow';
+    
+    return {
+      hasPII,
+      entities,
+      detections,
+      riskScore: hasPII ? 50 : 0,
+      originalMessage,
+      apiResponse: true,
+      apiDecision: apiResponse.decision,
+      apiPayload: apiResponse.payload,
+      apiReasons: reasons,
+      apiPolicyId: apiResponse.policy_id || null,
+      apiTimestamp: apiResponse.ts || null,
+      corrId: requestContext.corrId || null
+    };
+  }
+
   // API response format:
   // {
   //   "hasPII": true,
@@ -157,6 +215,30 @@ function transformAPIResponse(apiResponse, originalMessage) {
     originalMessage: originalMessage,
     apiResponse: true // Flag to indicate this came from API
   };
+}
+
+function extractDetectionFromReason(reason) {
+  if (typeof reason !== 'string') {
+    return null;
+  }
+  const [prefix, type] = reason.split(':');
+  if (!type) {
+    return null;
+  }
+  return {
+    type: type.trim(),
+    value: '',
+    confidence: 1.0,
+    position: null,
+    reason: prefix
+  };
+}
+
+function generateCorrelationId() {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+    return crypto.randomUUID();
+  }
+  return `req-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
 /**
@@ -352,4 +434,3 @@ function fallbackPIIDetection(text) {
     fallback: true
   };
 }
-

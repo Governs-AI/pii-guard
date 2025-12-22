@@ -7,10 +7,10 @@
 The GovernsAI Extension monitors and manages your interactions with AI platforms:
 
 - **Intercepts** messages sent to ChatGPT, Claude, and Gemini
-- **Scans** for personally identifiable information (PII) using the Precheck API
+- **Scans** for personally identifiable information (PII) using the Precheck API (configurable endpoint)
 - **Redacts** sensitive data automatically (configurable)
 - **Blocks** requests that violate organizational policies
-- **Logs** all interactions to the GovernsAI dashboard
+- **Logs** interactions to the GovernsAI dashboard when enabled
 - **Enforces** tool usage policies for AI features
 
 ## 📦 Project Structure
@@ -48,9 +48,16 @@ governs-ai-extension/
 
 1. Click the GovernsAI extension icon
 2. Go to "Settings" or right-click → "Options"
-3. Enter your GovernsAI API credentials
-4. Configure your policy preferences
-5. Select which AI platforms to monitor
+3. Set the Precheck API endpoint (local, console, or custom)
+4. Add your GovernsAI API key (required in all modes)
+5. Optionally enable dashboard logging
+6. Configure your policy preferences and platforms
+
+### Modes
+
+- **Local**: `http://localhost:8000/api/v1` (privacy-first, run Precheck locally)
+- **Console**: `https://app.governsai.com/api/v1` (full dashboard, managed platform)
+- **Self-hosted**: your own domain (full features with private hosting)
 
 ## 🏗️ Development Status
 
@@ -74,7 +81,7 @@ See [PROJECT_SPECS.md](PROJECT_SPECS.md) for complete technical documentation.
 - Messages are processed in memory only
 - No local storage of message content
 - API keys encrypted by Chrome storage
-- All API calls use HTTPS
+- Remote API calls use HTTPS; local endpoints may use HTTP
 - Compliant with Chrome Extension security policies
 
 ## 📄 License

@@ -39,7 +39,7 @@ async function loadStatus() {
       settings.enabled ? '✅ Active' : '⏸️ Disabled';
     
     // Update configuration status
-    const isConfigured = settings.apiKey && settings.orgId;
+    const isConfigured = !!settings.apiKey;
     document.getElementById('config-status').textContent = 
       isConfigured ? '✅ Configured' : '⚠️ Not Configured';
     
@@ -141,4 +141,3 @@ function showMessage(message) {
     setTimeout(() => messageEl.remove(), 300);
   }, 2000);
 }
-

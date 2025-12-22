@@ -3,6 +3,8 @@
 
 importScripts('precheck-client.js', 'policy-engine.js');
 
+const DEFAULT_DASHBOARD_URL = 'https://app.governsai.com';
+
 console.log('[GovernsAI] Background service worker initialized');
 
 // Listen for messages from content scripts
@@ -73,10 +75,22 @@ async function handleInterceptedMessage(request, sender) {
       precheckResult = { hasPII: false, entities: [] };
     }
     
-    // Evaluate policy
-    const policyDecision = evaluatePolicy(precheckResult, settings);
-    console.log('[GovernsAI] Policy decision:', policyDecision);
-    
+    let decision = applyApiDecision(precheckResult, message, settings);
+    if (decision) {
+      console.log('[GovernsAI] API decision:', decision);
+    } else {
+      decision = evaluatePolicy(precheckResult, settings);
+      console.log('[GovernsAI] Policy decision:', decision);
+      decision = {
+        action: decision.action,
+        reason: decision.reason,
+        redactedMessage: decision.redactedMessage,
+        redactionLog: decision.redactionLog || [],
+        originalMessage: message,
+        entities: decision.entities || []
+      };
+    }
+
     // Log the interaction
     await logInteraction({
       platform,
@@ -85,19 +99,12 @@ async function handleInterceptedMessage(request, sender) {
       messageLength: message.length,
       hasPII: precheckResult.hasPII,
       entities: precheckResult.entities,
-      action: policyDecision.action,
+      action: decision.action,
       settings
     });
     
     // Return the decision
-    return {
-      action: policyDecision.action,
-      reason: policyDecision.reason,
-      redactedMessage: policyDecision.redactedMessage,
-      redactionLog: policyDecision.redactionLog || [],
-      originalMessage: message,
-      entities: policyDecision.entities || []
-    };
+    return decision;
     
   } catch (error) {
     console.error('[GovernsAI] Unexpected error:', error);
@@ -119,7 +126,9 @@ async function getSettings() {
       enabled: true,
       apiKey: '',
       orgId: '',
-      precheckApiUrl: '', // Custom API URL (optional)
+      precheckApiUrl: DEFAULT_PRECHECK_API_BASE_URL,
+      dashboardUrl: DEFAULT_DASHBOARD_URL,
+      enableDashboardLogging: false,
       policyMode: 'allow', // 'allow', 'redact', 'block'
       enabledPlatforms: ['chatgpt', 'claude', 'gemini'],
       autoRedact: true,
@@ -139,7 +148,7 @@ async function getExtensionStatus() {
   const settings = await getSettings();
   return {
     enabled: settings.enabled,
-    configured: !!(settings.apiKey && settings.orgId),
+    configured: !!settings.apiKey,
     platforms: settings.enabledPlatforms,
     mode: settings.policyMode
   };
@@ -151,7 +160,6 @@ async function getExtensionStatus() {
  */
 async function logInteraction(data) {
   try {
-    // This will be implemented in the API client
     console.log('[GovernsAI] Logging interaction:', {
       platform: data.platform,
       action: data.action,
@@ -159,13 +167,136 @@ async function logInteraction(data) {
       timestamp: data.timestamp
     });
     
-    // TODO: Send to GovernsAI platform API
-    // await sendToGovernsAI('/logs', data);
+    const settings = data.settings || {};
+    if (!settings.enableDashboardLogging) {
+      return;
+    }
+
+    if (!settings.dashboardUrl || !settings.apiKey) {
+      console.warn('[GovernsAI] Dashboard logging enabled but URL or API key is missing');
+      return;
+    }
+
+    const logUrl = buildDashboardLogUrl(settings.dashboardUrl);
+    const payload = {
+      platform: data.platform,
+      url: data.url,
+      timestamp: data.timestamp,
+      messageLength: data.messageLength,
+      hasPII: data.hasPII,
+      entities: data.entities,
+      action: data.action
+    };
+
+    const headers = {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${settings.apiKey}`
+    };
+    if (settings.orgId) {
+      headers['X-Org-Id'] = settings.orgId;
+    }
+
+    const response = await fetch(logUrl, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(payload)
+    });
+
+    if (!response.ok) {
+      console.warn('[GovernsAI] Dashboard logging failed:', response.status, response.statusText);
+    }
     
   } catch (error) {
     console.error('[GovernsAI] Error logging interaction:', error);
     // Don't throw - logging failures shouldn't block the user
   }
+}
+
+function applyApiDecision(precheckResult, originalMessage, settings) {
+  if (!precheckResult || !precheckResult.apiDecision) {
+    return null;
+  }
+
+  const decision = precheckResult.apiDecision.toLowerCase();
+  const reasons = Array.isArray(precheckResult.apiReasons) ? precheckResult.apiReasons : [];
+
+  if (decision === 'allow') {
+    return {
+      action: 'ALLOW',
+      reason: reasons.join(', ') || 'Allowed by GovernsAI',
+      originalMessage,
+      entities: precheckResult.entities || []
+    };
+  }
+
+  if (decision === 'block') {
+    return {
+      action: 'BLOCK',
+      reason: reasons.join(', ') || 'Blocked by GovernsAI',
+      originalMessage,
+      entities: precheckResult.entities || []
+    };
+  }
+
+  if (decision === 'transform') {
+    const transformedText = extractTransformedText(precheckResult.apiPayload);
+    if (transformedText) {
+      return {
+        action: 'REDACT',
+        reason: reasons.join(', ') || 'Transformed by GovernsAI',
+        redactedMessage: transformedText,
+        redactionLog: buildRedactionLogFromReasons(reasons),
+        originalMessage,
+        entities: precheckResult.entities || []
+      };
+    }
+
+    const fallback = fallbackPIIDetection(originalMessage);
+    const redactionResult = redactPII(fallback, settings || {});
+    return {
+      action: 'REDACT',
+      reason: 'Transformed by GovernsAI (local fallback)',
+      redactedMessage: redactionResult.redactedText,
+      redactionLog: redactionResult.redactionLog,
+      originalMessage,
+      entities: fallback.entities || []
+    };
+  }
+
+  return null;
+}
+
+function extractTransformedText(payload) {
+  if (!payload) {
+    return '';
+  }
+  if (typeof payload === 'string') {
+    return payload;
+  }
+  return payload.raw_text || payload.text || payload.redacted_text || '';
+}
+
+function buildRedactionLogFromReasons(reasons) {
+  return reasons
+    .filter((reason) => typeof reason === 'string')
+    .map((reason) => ({
+      reason
+    }));
+}
+
+function normalizeUrl(value) {
+  return (value || '').trim().replace(/\/+$/, '');
+}
+
+function buildDashboardLogUrl(dashboardUrl) {
+  const normalized = normalizeUrl(dashboardUrl || DEFAULT_DASHBOARD_URL);
+  if (normalized.endsWith('/api/v1')) {
+    return `${normalized}/decisions`;
+  }
+  if (normalized.endsWith('/api')) {
+    return `${normalized}/decisions`;
+  }
+  return `${normalized}/api/v1/decisions`;
 }
 
 // Handle extension installation/update
@@ -177,4 +308,3 @@ chrome.runtime.onInstalled.addListener((details) => {
     chrome.runtime.openOptionsPage();
   }
 });
-
