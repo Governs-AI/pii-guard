@@ -7,6 +7,152 @@
   debugLog('Gemini interceptor loaded');
   
   let isProcessing = false;
+  let isSyntheticSend = false;
+  let activeInput = null;
+
+  // --- Helper Functions (Hoisted) ---
+
+  function getMessageFromInput(input) {
+    if (!input) return '';
+    // If rich-textarea, dive into shadow
+    if (input.tagName === 'RICH-TEXTAREA' && input.shadowRoot) {
+        const inner = input.shadowRoot.querySelector('[contenteditable="true"], div[role="textbox"]');
+        if (inner) input = inner;
+    }
+    
+    if (input.tagName === 'RICH-TEXTAREA') return input.value || input.textContent; // fallback
+    if (input.value !== undefined) return input.value;
+    return input.textContent || input.innerText || '';
+  }
+
+  function applyMessageToInput(input, value) {
+    if (!input) return;
+    
+    debugLog('Applying message to input:', input.tagName);
+    
+    // If it's the wrapper rich-textarea, try to find the inner contenteditable
+    if (input.tagName === 'RICH-TEXTAREA' && input.shadowRoot) {
+        const inner = input.shadowRoot.querySelector('[contenteditable="true"], div[role="textbox"]');
+        if (inner) {
+            input = inner; // Re-target to the actual editable element
+        }
+    }
+
+    input.focus();
+    
+    const isEditable = input.isContentEditable;
+    let success = false;
+
+    if (isEditable) {
+        // Strategy 1: Clear and Insert Text via execCommand (Best for Undo history and events)
+        try {
+            document.execCommand('selectAll', false, null);
+            document.execCommand('delete', false, null); // Clear explicitly
+            success = document.execCommand('insertText', false, value);
+            
+            if (!success && value) {
+                // If insertText fails (some browsers restrict it), try insertHTML
+                success = document.execCommand('insertHTML', false, value);
+            }
+        } catch (e) {
+            debugLog('execCommand failed', e);
+        }
+        
+        // Strategy 2: Paste Simulation (Bypasses many restrictions)
+        if (!success) {
+            try {
+                const dt = new DataTransfer();
+                dt.setData('text/plain', value);
+                const pasteEvent = new ClipboardEvent('paste', {
+                    clipboardData: dt,
+                    bubbles: true,
+                    cancelable: true,
+                    composed: true,
+                    view: window
+                });
+                input.dispatchEvent(pasteEvent);
+                
+                // Check if paste worked (some apps handle paste async)
+                // We'll assume success if we dispatched it, but let's double check content
+                if (input.textContent === value) success = true;
+            } catch (e) {
+                debugLog('Paste simulation failed', e);
+            }
+        }
+        
+        // Strategy 3: Direct DOM manipulation + Event flood (Last resort)
+        if (!success && input.textContent !== value) {
+             input.textContent = value; // innerText often triggers different observers
+             if (input.innerHTML !== value) input.innerHTML = value;
+        }
+    } else {
+        // Standard inputs
+        input.value = value;
+    }
+
+    // Always dispatch events to notify framework
+    dispatchEvents(input, value);
+  }
+
+  function dispatchEvents(input, value) {
+      const events = [
+        new InputEvent('beforeinput', { bubbles: true, composed: true, data: value, inputType: 'insertText' }),
+        new InputEvent('input', { bubbles: true, composed: true, data: value, inputType: 'insertText' }),
+        new Event('change', { bubbles: true, composed: true }),
+        // specific for Angular/Zone.js sometimes
+        new Event('compositionstart', { bubbles: true, composed: true }),
+        new Event('compositionend', { bubbles: true, composed: true, data: value })
+      ];
+      
+      events.forEach(e => input.dispatchEvent(e));
+  }
+
+  function updateRichTextArea(element, value) {
+    // Legacy support wrapper - logic moved to applyMessageToInput
+    applyMessageToInput(element, value);
+  }
+
+  function triggerSend(sendButton, textarea) {
+    isSyntheticSend = true;
+    
+    setTimeout(() => {
+        if (sendButton && !sendButton.disabled) {
+            sendButton.click();
+        } else if (textarea) {
+            const enterEvent = new KeyboardEvent('keydown', {
+                key: 'Enter',
+                code: 'Enter',
+                which: 13,
+                keyCode: 13,
+                bubbles: true,
+                composed: true
+            });
+            textarea.dispatchEvent(enterEvent);
+        }
+        
+        // Reset flag after a delay
+        setTimeout(() => isSyntheticSend = false, 500);
+    }, 100); // 100ms wait
+  }
+
+  function getActiveInput(selectors) {
+    const active = document.activeElement;
+    // If active element is a good candidate, return it
+    if (active && (active.isContentEditable || active.tagName === 'TEXTAREA' || active.tagName === 'INPUT' || active.tagName === 'RICH-TEXTAREA')) {
+       // If it's inside shadow root (e.g. rich-textarea -> activeElement), it might be handled by shadow root logic
+       return active;
+    }
+    
+    // If we have a stored active input, use it
+    if (activeInput && document.contains(activeInput)) return activeInput;
+    
+    // Search
+    for (const selector of selectors) {
+      const element = document.querySelector(selector);
+      if (element) return element;
+    }
+    return null;
+  }
   
   /**
    * Intercepts the message submission
@@ -42,13 +188,23 @@
           
         case 'REDACT':
           debugLog('Message redacted:', response.redactedMessage);
-          debugLog('Redaction log:', response.redactionLog);
           showNotification(
             `Redacted ${response.entities?.length || 0} PII entities`,
             'warning',
             { redactionLog: response.redactionLog }
           );
-          sendCallback(response.redactedMessage);
+          
+          // Apply redaction to UI
+          if (activeInput) {
+            applyMessageToInput(activeInput, response.redactedMessage);
+            
+            // Wait a bit for UI to sync before sending
+            setTimeout(() => {
+                sendCallback(response.redactedMessage);
+            }, 150);
+          } else {
+             sendCallback(response.redactedMessage);
+          }
           break;
           
         case 'BLOCK':
@@ -98,18 +254,18 @@
           
           // Intercept Enter key press
           textarea.addEventListener('keydown', async (e) => {
+            activeInput = textarea;
+            // Update active input on keydown to ensure we have the latest focused element
+            if (document.activeElement && document.activeElement !== document.body) {
+                activeInput = document.activeElement;
+            }
+
+            if (isSyntheticSend) {
+              isSyntheticSend = false;
+              return;
+            }
             if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey && !e.metaKey) {
-              let message;
-              
-              // Get message text based on element type
-              if (textarea.tagName === 'RICH-TEXTAREA') {
-                // For rich-textarea custom element
-                message = textarea.value || textarea.textContent || textarea.innerText;
-              } else if (textarea.tagName === 'TEXTAREA') {
-                message = textarea.value;
-              } else {
-                message = textarea.textContent || textarea.innerText;
-              }
+              const message = getMessageFromInput(textarea); // Use original found textarea as fallback source
               
               if (message && message.trim()) {
                 e.preventDefault();
@@ -117,32 +273,9 @@
                 e.stopImmediatePropagation();
                 
                 await interceptMessage(message, (finalMessage) => {
-                  // Update textarea with potentially redacted message
-                  if (textarea.tagName === 'TEXTAREA' || textarea.value !== undefined) {
-                    textarea.value = finalMessage;
-                  } else {
-                    textarea.textContent = finalMessage;
-                  }
-                  
-                  // Trigger input event to update Gemini's internal state
-                  const inputEvent = new Event('input', { bubbles: true });
-                  textarea.dispatchEvent(inputEvent);
-                  
-                  // Find and click the send button
+                  // Final callback handles the send
                   const sendButton = findSendButton();
-                  if (sendButton && !sendButton.disabled) {
-                    setTimeout(() => sendButton.click(), 50);
-                  } else {
-                    // Fallback: dispatch Enter event
-                    const enterEvent = new KeyboardEvent('keydown', {
-                      key: 'Enter',
-                      code: 'Enter',
-                      which: 13,
-                      keyCode: 13,
-                      bubbles: true
-                    });
-                    textarea.dispatchEvent(enterEvent);
-                  }
+                  triggerSend(sendButton, activeInput || textarea);
                 });
               }
             }
@@ -180,7 +313,6 @@
     for (const selector of buttonSelectors) {
       const button = document.querySelector(selector);
       if (button) {
-        debugLog('Found send button with selector:', selector);
         return button;
       }
     }
@@ -195,7 +327,6 @@
       if (ariaLabel.toLowerCase().includes('send') || 
           tooltip.toLowerCase().includes('send') ||
           text.toLowerCase().includes('send')) {
-        debugLog('Found send button by attributes');
         return button;
       }
       
@@ -204,7 +335,6 @@
       if (svg) {
         const svgContent = svg.innerHTML.toLowerCase();
         if (svgContent.includes('send')) {
-          debugLog('Found send button by SVG content');
           return button;
         }
       }
@@ -224,6 +354,10 @@
         sendButton.setAttribute('data-governs-intercepted', 'true');
         
         sendButton.addEventListener('click', async (e) => {
+          if (isSyntheticSend) {
+            isSyntheticSend = false;
+            return;
+          }
           const textareaSelectors = [
             'rich-textarea',
             'div[contenteditable="true"]',
@@ -233,22 +367,10 @@
             'textarea[placeholder*="Enter"]'
           ];
           
-          let textarea = null;
-          for (const selector of textareaSelectors) {
-            textarea = document.querySelector(selector);
-            if (textarea) break;
-          }
+          const textarea = getActiveInput(textareaSelectors);
+          activeInput = textarea; // capture active input
           
-          let message;
-          if (textarea) {
-            if (textarea.tagName === 'RICH-TEXTAREA') {
-              message = textarea.value || textarea.textContent || textarea.innerText;
-            } else if (textarea.tagName === 'TEXTAREA') {
-              message = textarea.value;
-            } else {
-              message = textarea.textContent || textarea.innerText;
-            }
-          }
+          const message = getMessageFromInput(textarea);
           
           if (message && message.trim()) {
             e.preventDefault();
@@ -256,26 +378,8 @@
             e.stopImmediatePropagation();
             
             await interceptMessage(message, (finalMessage) => {
-              if (textarea) {
-                if (textarea.tagName === 'TEXTAREA' || textarea.value !== undefined) {
-                  textarea.value = finalMessage;
-                } else {
-                  textarea.textContent = finalMessage;
-                }
-                
-                // Trigger input event
-                const inputEvent = new Event('input', { bubbles: true });
-                textarea.dispatchEvent(inputEvent);
-              }
-              
-              // Remove interception temporarily to allow actual send
-              sendButton.removeAttribute('data-governs-intercepted');
-              setTimeout(() => sendButton.click(), 50);
-              
-              // Re-add interception after a delay
-              setTimeout(() => {
-                sendButton.setAttribute('data-governs-intercepted', 'true');
-              }, 200);
+               const btn = findSendButton();
+               triggerSend(btn, textarea);
             });
           }
         }, true);
@@ -309,4 +413,3 @@
   }).observe(document, { subtree: true, childList: true });
   
 })();
-
