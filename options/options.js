@@ -13,7 +13,20 @@ const STORAGE_DEFAULTS = {
   apiKey: '',
   orgId: '',
   dashboardUrl: DEFAULT_DASHBOARD_URL,
-  enableDashboardLogging: false
+  enableDashboardLogging: false,
+  localPolicy: {
+    mode: 'redact',
+    piiTypes: {
+      EMAIL: true,
+      PHONE: true,
+      SSN: true,
+      CREDIT_CARD: true,
+      IP_ADDRESS: true,
+      API_KEY: true,
+      ADDRESS: true,
+      PASSWORD: true
+    }
+  }
 };
 
 document.addEventListener('DOMContentLoaded', async () => {
@@ -22,7 +35,14 @@ document.addEventListener('DOMContentLoaded', async () => {
 });
 
 async function loadSettings() {
-  const settings = await chrome.storage.local.get(STORAGE_DEFAULTS);
+  // Use deep merge if possible, or just defaults. chrome.storage.local.get with object defaults does a shallow merge usually.
+  // We'll read everything and merge manually if needed.
+  const stored = await chrome.storage.local.get(null);
+  const settings = { ...STORAGE_DEFAULTS, ...stored };
+  
+  // Ensure localPolicy structure exists
+  if (!settings.localPolicy) settings.localPolicy = STORAGE_DEFAULTS.localPolicy;
+  if (!settings.localPolicy.piiTypes) settings.localPolicy.piiTypes = STORAGE_DEFAULTS.localPolicy.piiTypes;
 
   const precheckInput = document.getElementById('precheck-api-url');
   const apiKeyInput = document.getElementById('api-key');
@@ -36,8 +56,36 @@ async function loadSettings() {
   dashboardInput.value = settings.dashboardUrl || DEFAULT_DASHBOARD_URL;
   enableLogging.checked = !!settings.enableDashboardLogging;
 
+  // Set Local Policy UI
+  const mode = settings.localPolicy.mode || 'redact';
+  const modeRadio = document.querySelector(`input[name="policy-mode"][value="${mode}"]`);
+  if (modeRadio) modeRadio.checked = true;
+
+  const piiTypes = settings.localPolicy.piiTypes || {};
+  document.querySelectorAll('input[name="pii-type"]').forEach(checkbox => {
+    // Default to false if not present, or true if present.
+    // Actually, checking if key exists is better, but simplified:
+    checkbox.checked = !!piiTypes[checkbox.value];
+  });
+
   const preset = getPresetForUrl(precheckInput.value);
   setPresetSelection(preset);
+  
+  // Visual cue for Connected Mode
+  updateUIForConnectionState(!!settings.apiKey);
+}
+
+function updateUIForConnectionState(isConnected) {
+  const localCard = document.getElementById('local-policy-card');
+  if (localCard) {
+    if (isConnected) {
+      localCard.style.opacity = '0.7';
+      localCard.title = "These settings are overridden by your organization's policy.";
+    } else {
+      localCard.style.opacity = '1';
+      localCard.title = "";
+    }
+  }
 }
 
 function setupEventListeners() {
@@ -45,6 +93,7 @@ function setupEventListeners() {
   const precheckInput = document.getElementById('precheck-api-url');
   const presetRadios = document.querySelectorAll('input[name="precheck-preset"]');
   const testButton = document.getElementById('test-connection');
+  const apiKeyInput = document.getElementById('api-key');
 
   form.addEventListener('submit', handleSave);
   testButton.addEventListener('click', handleTestConnection);
@@ -64,6 +113,10 @@ function setupEventListeners() {
     setPresetSelection(preset);
     setConnectionStatus('Status: Not tested');
   });
+  
+  apiKeyInput.addEventListener('input', () => {
+     updateUIForConnectionState(!!apiKeyInput.value.trim());
+  });
 }
 
 async function handleSave(event) {
@@ -77,13 +130,24 @@ async function handleSave(event) {
 
   const precheckApiUrl = normalizeUrl(precheckInput.value) || DEFAULT_PRECHECK_BASE_URL;
   const dashboardUrl = normalizeUrl(dashboardInput.value) || DEFAULT_DASHBOARD_URL;
+  
+  // Gather Local Policy
+  const selectedMode = document.querySelector('input[name="policy-mode"]:checked')?.value || 'redact';
+  const selectedPiiTypes = {};
+  document.querySelectorAll('input[name="pii-type"]').forEach(cb => {
+    selectedPiiTypes[cb.value] = cb.checked;
+  });
 
   const settings = {
     precheckApiUrl,
     apiKey: apiKeyInput.value.trim(),
     orgId: orgIdInput.value.trim(),
     dashboardUrl,
-    enableDashboardLogging: !!enableLogging.checked
+    enableDashboardLogging: !!enableLogging.checked,
+    localPolicy: {
+      mode: selectedMode,
+      piiTypes: selectedPiiTypes
+    }
   };
 
   if (!getOriginPattern(precheckApiUrl)) {

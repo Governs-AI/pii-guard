@@ -129,12 +129,36 @@ async function getSettings() {
       precheckApiUrl: DEFAULT_PRECHECK_API_BASE_URL,
       dashboardUrl: DEFAULT_DASHBOARD_URL,
       enableDashboardLogging: false,
-      policyMode: 'allow', // 'allow', 'redact', 'block'
+      policyMode: 'allow', // Legacy support
       enabledPlatforms: ['chatgpt', 'claude', 'gemini'],
       autoRedact: true,
-      redactionStrategy: 'full', // 'full', 'partial', 'hash', 'smart'
-      debugMode: false
+      redactionStrategy: 'full',
+      debugMode: false,
+      // New Local Policy Structure
+      localPolicy: {
+        mode: 'redact',
+        piiTypes: {
+          EMAIL: true,
+          PHONE: true,
+          SSN: true,
+          CREDIT_CARD: true,
+          NAME: false,
+          ADDRESS: true,
+          IP_ADDRESS: true,
+          API_KEY: true,
+          PASSWORD: true
+        },
+        customWords: []
+      }
     }, (settings) => {
+      // Ensure nested objects exist if they were partially retrieved
+      if (!settings.localPolicy) settings.localPolicy = {};
+      if (!settings.localPolicy.piiTypes) {
+        settings.localPolicy.piiTypes = {
+          EMAIL: true, PHONE: true, SSN: true, CREDIT_CARD: true,
+          NAME: false, ADDRESS: true, IP_ADDRESS: true, API_KEY: true, PASSWORD: true
+        };
+      }
       resolve(settings);
     });
   });

@@ -47,7 +47,8 @@ async function scanForPII(text, settings) {
   const originalMessage = text;
   
   try {
-    const result = await callPrecheckAPIWithRetry(apiUrl, text, apiKey, orgId, corrId);
+    // Pass full settings for context
+    const result = await callPrecheckAPIWithRetry(apiUrl, text, apiKey, orgId, corrId, settings);
     
     // Transform API response to internal format
     return transformAPIResponse(result, originalMessage, { corrId });
@@ -66,10 +67,12 @@ async function scanForPII(text, settings) {
  * @param {string} text - Text to scan
  * @param {string} apiKey - API authentication key
  * @param {string} orgId - Organization ID
+ * @param {string} corrId - Correlation ID
+ * @param {object} settings - User settings for context
  * @param {number} attempt - Current attempt number (starts at 1)
  * @returns {Promise<object>} API response
  */
-async function callPrecheckAPIWithRetry(apiUrl, text, apiKey, orgId, corrId, attempt = 1) {
+async function callPrecheckAPIWithRetry(apiUrl, text, apiKey, orgId, corrId, settings, attempt = 1) {
   try {
     console.log(`[GovernsAI] Precheck API call attempt ${attempt}/${MAX_RETRIES}`);
     
@@ -82,14 +85,20 @@ async function callPrecheckAPIWithRetry(apiUrl, text, apiKey, orgId, corrId, att
     if (orgId) {
       headers['X-Org-Id'] = orgId;
     }
-    
+
+    // Construct full payload including policy config
     const payload = {
       tool: DEFAULT_TOOL,
       scope: DEFAULT_SCOPE,
       raw_text: text,
-      tags: [],
+      tags: [], // Keep empty or add user-defined tags later
       corr_id: corrId
     };
+    
+    // Add Policy Configuration if local settings exist
+    if (settings && settings.localPolicy) {
+      payload.policy_config = buildPolicyConfig(settings.localPolicy);
+    }
     
     const response = await fetch(apiUrl, {
       method: 'POST',
@@ -132,12 +141,70 @@ async function callPrecheckAPIWithRetry(apiUrl, text, apiKey, orgId, corrId, att
       console.log(`[GovernsAI] Retrying in ${delay}ms...`);
       
       await sleep(delay);
-      return callPrecheckAPIWithRetry(apiUrl, text, apiKey, orgId, attempt + 1);
+      return callPrecheckAPIWithRetry(apiUrl, text, apiKey, orgId, corrId, settings, attempt + 1);
     }
     
     // Max retries reached or non-retryable error
     throw error;
   }
+}
+
+/**
+ * Builds the policy_config object from local settings
+ * @param {object} localPolicy - Local policy settings
+ * @returns {object} API-compatible policy config
+ */
+function buildPolicyConfig(localPolicy) {
+  const mode = localPolicy.mode || 'redact';
+  // Map local modes to API actions: 'block' -> 'block', 'redact' -> 'redact', 'warn' -> 'pass_through' (with warning handled client-side)
+  // Actually, if 'warn', we probably want 'redact' or 'pass_through' depending on if we want the API to tag it.
+  // Let's assume 'warn' means 'pass_through' for the API, and we handle the warning based on the response detections.
+  const action = mode === 'warn' ? 'pass_through' : mode; 
+  
+  const piiMap = {
+    'EMAIL': 'PII:email_address',
+    'PHONE': 'PII:phone_number',
+    'SSN': 'PII:us_ssn',
+    'CREDIT_CARD': 'PII:credit_card',
+    'IP_ADDRESS': 'PII:ip_address',
+    'API_KEY': 'PII:api_key',
+    'ADDRESS': 'PII:us_address',
+    'NAME': 'PII:person_name',
+    'PASSWORD': 'PII:password'
+  };
+
+  const allowPii = {};
+  
+  // Iterate through enabled PII types and set action
+  if (localPolicy.piiTypes) {
+    Object.entries(localPolicy.piiTypes).forEach(([type, enabled]) => {
+      const apiKey = piiMap[type];
+      if (apiKey) {
+        if (enabled) {
+          // If enabled, apply the policy action
+          allowPii[apiKey] = action; 
+        } else {
+          // If disabled, explicitly pass through
+          allowPii[apiKey] = 'pass_through';
+        }
+      }
+    });
+  }
+
+  return {
+    version: "v1",
+    defaults: {
+      ingress: { action: "pass_through" },
+      egress: { action: action }
+    },
+    tool_access: {
+      [DEFAULT_TOOL]: {
+        direction: "ingress", // Matching user example
+        action: null,
+        allow_pii: allowPii
+      }
+    }
+  };
 }
 
 /**

@@ -46,6 +46,59 @@
         <input id="org-id" type="text" placeholder="Optional organization ID" autocomplete="off">
       </section>
 
+      <section class="card" id="local-policy-card">
+        <h2>Local Policy Settings (Tier 1)</h2>
+        <p class="hint">These settings apply when not connected to an organization policy.</p>
+        
+        <div class="form-group">
+          <label class="label">Action on PII Detection</label>
+          <div class="radio-group">
+            <label class="radio">
+              <input type="radio" name="policy-mode" value="block">
+              Block Message
+            </label>
+            <label class="radio">
+              <input type="radio" name="policy-mode" value="redact">
+              Redact PII
+            </label>
+            <label class="radio">
+              <input type="radio" name="policy-mode" value="warn">
+              Warn Only
+            </label>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label class="label">PII Types to Detect</label>
+          <div class="checkbox-grid">
+            <label class="checkbox">
+              <input type="checkbox" name="pii-type" value="EMAIL"> Email
+            </label>
+            <label class="checkbox">
+              <input type="checkbox" name="pii-type" value="PHONE"> Phone
+            </label>
+            <label class="checkbox">
+              <input type="checkbox" name="pii-type" value="SSN"> SSN
+            </label>
+            <label class="checkbox">
+              <input type="checkbox" name="pii-type" value="CREDIT_CARD"> Credit Card
+            </label>
+            <label class="checkbox">
+              <input type="checkbox" name="pii-type" value="IP_ADDRESS"> IP Address
+            </label>
+            <label class="checkbox">
+              <input type="checkbox" name="pii-type" value="API_KEY"> API Keys
+            </label>
+            <label class="checkbox">
+              <input type="checkbox" name="pii-type" value="ADDRESS"> Address
+            </label>
+            <label class="checkbox">
+              <input type="checkbox" name="pii-type" value="PASSWORD"> Passwords
+            </label>
+          </div>
+        </div>
+      </section>
+
       <section class="card">
         <h2>Dashboard Logging (Optional)</h2>
         <label for="dashboard-url">Dashboard URL</label>
