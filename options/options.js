@@ -4,7 +4,6 @@
 const DEFAULT_PRECHECK_BASE_URL = 'https://app.governsai.com/api/v1';
 const DEFAULT_DASHBOARD_URL = 'https://app.governsai.com';
 const PRESET_URLS = {
-  local: 'http://localhost:8000/api/v1',
   console: DEFAULT_PRECHECK_BASE_URL
 };
 
@@ -14,6 +13,7 @@ const STORAGE_DEFAULTS = {
   orgId: '',
   dashboardUrl: DEFAULT_DASHBOARD_URL,
   enableDashboardLogging: false,
+  policySource: 'console', // 'console' or 'local'
   localPolicy: {
     mode: 'redact',
     piiTypes: {
@@ -26,7 +26,8 @@ const STORAGE_DEFAULTS = {
       ADDRESS: true,
       PASSWORD: true
     }
-  }
+  },
+  redactionStrategy: 'full' // 'full', 'partial', 'smart'
 };
 
 document.addEventListener('DOMContentLoaded', async () => {
@@ -50,11 +51,25 @@ async function loadSettings() {
   const dashboardInput = document.getElementById('dashboard-url');
   const enableLogging = document.getElementById('enable-logging');
 
+  // Check if required elements exist
+  if (!precheckInput || !apiKeyInput || !orgIdInput) {
+    console.error('[Options] Required form elements not found');
+    return;
+  }
+
   precheckInput.value = settings.precheckApiUrl || DEFAULT_PRECHECK_BASE_URL;
   apiKeyInput.value = settings.apiKey || '';
   orgIdInput.value = settings.orgId || '';
-  dashboardInput.value = settings.dashboardUrl || DEFAULT_DASHBOARD_URL;
-  enableLogging.checked = !!settings.enableDashboardLogging;
+  
+  // Dashboard logging (optional - only if elements exist)
+  if (dashboardInput) dashboardInput.value = settings.dashboardUrl || DEFAULT_DASHBOARD_URL;
+  if (enableLogging) enableLogging.checked = !!settings.enableDashboardLogging;
+
+  // Determine policy source based on API endpoint
+  const policySource = isGovernsAIConsole(precheckInput.value) ? 'console' : 'local';
+  
+  // Show/hide local policy card based on API endpoint
+  updateLocalPolicyVisibility(policySource);
 
   // Set Local Policy UI
   const mode = settings.localPolicy.mode || 'redact';
@@ -63,29 +78,34 @@ async function loadSettings() {
 
   const piiTypes = settings.localPolicy.piiTypes || {};
   document.querySelectorAll('input[name="pii-type"]').forEach(checkbox => {
-    // Default to false if not present, or true if present.
-    // Actually, checking if key exists is better, but simplified:
     checkbox.checked = !!piiTypes[checkbox.value];
   });
+  
+  // Set redaction strategy
+  const strategy = settings.redactionStrategy || 'full';
+  const strategyRadio = document.querySelector(`input[name="redaction-strategy"][value="${strategy}"]`);
+  if (strategyRadio) strategyRadio.checked = true;
 
   const preset = getPresetForUrl(precheckInput.value);
   setPresetSelection(preset);
-  
-  // Visual cue for Connected Mode
-  updateUIForConnectionState(!!settings.apiKey);
 }
 
-function updateUIForConnectionState(isConnected) {
+function updateLocalPolicyVisibility(policySource) {
   const localCard = document.getElementById('local-policy-card');
   if (localCard) {
-    if (isConnected) {
-      localCard.style.opacity = '0.7';
-      localCard.title = "These settings are overridden by your organization's policy.";
+    if (policySource === 'console') {
+      localCard.style.display = 'none';
     } else {
-      localCard.style.opacity = '1';
-      localCard.title = "";
+      localCard.style.display = 'block';
     }
   }
+}
+
+function isGovernsAIConsole(url) {
+  const normalized = normalizeUrl(url).toLowerCase();
+  // Check if it's the official GovernsAI Console URL
+  return normalized.includes('app.governsai.com') || 
+         normalized.includes('governsai.com/api');
 }
 
 function setupEventListeners() {
@@ -112,10 +132,10 @@ function setupEventListeners() {
     const preset = getPresetForUrl(precheckInput.value);
     setPresetSelection(preset);
     setConnectionStatus('Status: Not tested');
-  });
-  
-  apiKeyInput.addEventListener('input', () => {
-     updateUIForConnectionState(!!apiKeyInput.value.trim());
+    
+    // Auto-update policy source based on endpoint
+    const policySource = isGovernsAIConsole(precheckInput.value) ? 'console' : 'local';
+    updateLocalPolicyVisibility(policySource);
   });
 }
 
@@ -129,25 +149,31 @@ async function handleSave(event) {
   const enableLogging = document.getElementById('enable-logging');
 
   const precheckApiUrl = normalizeUrl(precheckInput.value) || DEFAULT_PRECHECK_BASE_URL;
-  const dashboardUrl = normalizeUrl(dashboardInput.value) || DEFAULT_DASHBOARD_URL;
+  const dashboardUrl = dashboardInput ? normalizeUrl(dashboardInput.value) || DEFAULT_DASHBOARD_URL : DEFAULT_DASHBOARD_URL;
   
-  // Gather Local Policy
+  // Auto-determine policy source based on API endpoint
+  const policySource = isGovernsAIConsole(precheckApiUrl) ? 'console' : 'local';
+  
+  // Gather Local Policy (only relevant if using local)
   const selectedMode = document.querySelector('input[name="policy-mode"]:checked')?.value || 'redact';
   const selectedPiiTypes = {};
   document.querySelectorAll('input[name="pii-type"]').forEach(cb => {
     selectedPiiTypes[cb.value] = cb.checked;
   });
+  const selectedStrategy = document.querySelector('input[name="redaction-strategy"]:checked')?.value || 'full';
 
   const settings = {
     precheckApiUrl,
     apiKey: apiKeyInput.value.trim(),
     orgId: orgIdInput.value.trim(),
     dashboardUrl,
-    enableDashboardLogging: !!enableLogging.checked,
+    enableDashboardLogging: enableLogging ? !!enableLogging.checked : false,
+    policySource,
     localPolicy: {
       mode: selectedMode,
       piiTypes: selectedPiiTypes
-    }
+    },
+    redactionStrategy: selectedStrategy
   };
 
   if (!getOriginPattern(precheckApiUrl)) {
@@ -161,7 +187,7 @@ async function handleSave(event) {
     return;
   }
 
-  if (settings.enableDashboardLogging) {
+  if (settings.enableDashboardLogging && dashboardInput) {
     if (!getOriginPattern(dashboardUrl)) {
       setSaveStatus('Invalid Dashboard URL.', true);
       return;

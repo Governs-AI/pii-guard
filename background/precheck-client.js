@@ -86,29 +86,28 @@ async function callPrecheckAPIWithRetry(apiUrl, text, apiKey, orgId, corrId, set
       headers['X-Org-Id'] = orgId;
     }
 
-    // Construct full payload including policy config
+    // Base payload
     const payload = {
       tool: DEFAULT_TOOL,
       scope: DEFAULT_SCOPE,
       raw_text: text,
-      tags: [], // Keep empty or add user-defined tags later
-      corr_id: corrId,
-      user_id: settings.userId || 'anonymous-user',
-      tool_config: {
-        tool_name: DEFAULT_TOOL,
-        scope: DEFAULT_SCOPE,
-        direction: "egress", // Browser prompt is outgoing
-        metadata: {
-           client: "governsai-extension",
-           version: "1.0.0"
-        }
-      },
-      budget_context: null // Placeholder for compatibility
+      tags: [],
+      corr_id: corrId
     };
     
-    // Add Policy Configuration if local settings exist
-    if (settings && settings.localPolicy) {
+    // Add user_id if provided (optional)
+    if (settings.userId) {
+      payload.user_id = settings.userId;
+    }
+    
+    // Check if user wants to send local policy config
+    if (settings.policySource === 'local' && settings.localPolicy) {
+      // User selected "Use Local Policies" - include policy_config
       payload.policy_config = buildPolicyConfig(settings.localPolicy);
+      console.log('[GovernsAI] Using local policy configuration');
+    } else {
+      // Default: Use GovernsAI Console policies (no policy_config sent)
+      console.log('[GovernsAI] Using GovernsAI Console policies (no client config sent)');
     }
     
     const response = await fetch(apiUrl, {
@@ -434,9 +433,10 @@ class RetryableError extends Error {
 
 /**
  * Fallback PII detection using simple regex patterns
- * Converts to API response format for consistency
+ * Returns format compatible with server response but without server policy
+ * Client-side policy engine will handle the decision
  * @param {string} text - Text to scan
- * @returns {object} Basic PII detection results
+ * @returns {object} Basic PII detection results (no server policy)
  */
 function fallbackPIIDetection(text) {
   const detections = [];
@@ -446,7 +446,7 @@ function fallbackPIIDetection(text) {
   let match;
   while ((match = emailRegex.exec(text)) !== null) {
     detections.push({
-      type: 'email',
+      type: 'email_address',
       value: match[0],
       confidence: 0.85,
       position: { start: match.index, end: match.index + match[0].length }
@@ -457,7 +457,7 @@ function fallbackPIIDetection(text) {
   const phoneRegex = /\b(\+?1[-.]?)?\(?\d{3}\)?[-.]?\d{3}[-.]?\d{4}\b/g;
   while ((match = phoneRegex.exec(text)) !== null) {
     detections.push({
-      type: 'phone',
+      type: 'phone_number',
       value: match[0],
       confidence: 0.80,
       position: { start: match.index, end: match.index + match[0].length }
@@ -468,7 +468,7 @@ function fallbackPIIDetection(text) {
   const ssnRegex = /\b\d{3}-\d{2}-\d{4}\b/g;
   while ((match = ssnRegex.exec(text)) !== null) {
     detections.push({
-      type: 'ssn',
+      type: 'us_ssn',
       value: match[0],
       confidence: 0.95,
       position: { start: match.index, end: match.index + match[0].length }
@@ -497,16 +497,24 @@ function fallbackPIIDetection(text) {
   }));
   
   const hasPII = detections.length > 0;
-  const riskScore = calculateRiskScore(detections);
+  const piiTypes = detections.map(d => d.type);
   
   console.log('[GovernsAI] Fallback PII detection:', { hasPII, entities: entities.length });
   
   return {
+    // No server policy - client will decide
+    serverPolicy: null,
+    
+    // PII information
     hasPII,
     entities,
     detections,
-    riskScore: Math.min(riskScore, 100),
+    piiTypes,
+    
+    // Metadata
     originalMessage: text,
-    fallback: true
+    riskScore: calculateRiskScore(detections),
+    fallback: true,
+    serverPolicyApplied: false
   };
 }

@@ -17,13 +17,9 @@
         <label for="precheck-api-url">Precheck API Endpoint</label>
         <input id="precheck-api-url" type="url" placeholder="https://app.governsai.com/api/v1" autocomplete="off">
         <div class="preset-group">
-          <span class="label">Presets</span>
+          <span class="label">Quick Select</span>
           <label class="radio">
-            <input type="radio" name="precheck-preset" value="local">
-            Local (localhost:8000)
-          </label>
-          <label class="radio">
-            <input type="radio" name="precheck-preset" value="console">
+            <input type="radio" name="precheck-preset" value="console" checked>
             GovernsAI Console (app.governsai.com)
           </label>
           <label class="radio">
@@ -31,6 +27,7 @@
             Custom URL
           </label>
         </div>
+        <p class="hint">For local development, use Custom URL with <code>http://localhost:8000/api/v1</code></p>
         <div class="actions">
           <button id="test-connection" type="button" class="btn">Test Connection</button>
           <span id="connection-status" class="status">Status: Not tested</span>
@@ -47,8 +44,8 @@
       </section>
 
       <section class="card" id="local-policy-card">
-        <h2>Local Policy Settings (Tier 1)</h2>
-        <p class="hint">These settings apply when not connected to an organization policy.</p>
+        <h2>Local Policy Settings</h2>
+        <p class="hint">These settings only apply when "Use Local Policies" is selected above.</p>
         
         <div class="form-group">
           <label class="label">Action on PII Detection</label>
@@ -62,8 +59,8 @@
               Redact PII
             </label>
             <label class="radio">
-              <input type="radio" name="policy-mode" value="warn">
-              Warn Only
+              <input type="radio" name="policy-mode" value="allow">
+              Allow (Log Only)
             </label>
           </div>
         </div>
@@ -72,16 +69,16 @@
           <label class="label">PII Types to Detect</label>
           <div class="checkbox-grid">
             <label class="checkbox">
-              <input type="checkbox" name="pii-type" value="EMAIL"> Email
+              <input type="checkbox" name="pii-type" value="EMAIL" checked> Email
             </label>
             <label class="checkbox">
-              <input type="checkbox" name="pii-type" value="PHONE"> Phone
+              <input type="checkbox" name="pii-type" value="PHONE" checked> Phone
             </label>
             <label class="checkbox">
-              <input type="checkbox" name="pii-type" value="SSN"> SSN
+              <input type="checkbox" name="pii-type" value="SSN" checked> SSN
             </label>
             <label class="checkbox">
-              <input type="checkbox" name="pii-type" value="CREDIT_CARD"> Credit Card
+              <input type="checkbox" name="pii-type" value="CREDIT_CARD" checked> Credit Card
             </label>
             <label class="checkbox">
               <input type="checkbox" name="pii-type" value="IP_ADDRESS"> IP Address
@@ -97,9 +94,27 @@
             </label>
           </div>
         </div>
+
+        <div class="form-group">
+          <label class="label">Redaction Strategy</label>
+          <div class="radio-group">
+            <label class="radio">
+              <input type="radio" name="redaction-strategy" value="full" checked>
+              Full Redaction <span class="hint">[REDACTED_EMAIL]</span>
+            </label>
+            <label class="radio">
+              <input type="radio" name="redaction-strategy" value="partial">
+              Partial <span class="hint">•••@•••.•••</span>
+            </label>
+            <label class="radio">
+              <input type="radio" name="redaction-strategy" value="smart">
+              Smart <span class="hint">user@[REDACTED]</span>
+            </label>
+          </div>
+        </div>
       </section>
 
-      <section class="card">
+      <!-- <section class="card">
         <h2>Dashboard Logging (Optional)</h2>
         <label for="dashboard-url">Dashboard URL</label>
         <input id="dashboard-url" type="url" placeholder="https://app.governsai.com" autocomplete="off">
@@ -107,7 +122,7 @@
           <input id="enable-logging" type="checkbox">
           Enable dashboard logging
         </label>
-      </section>
+      </section> -->
 
       <div class="actions footer-actions">
         <button id="save-settings" type="submit" class="btn primary">Save Settings</button>

@@ -261,7 +261,8 @@ function applyApiDecision(precheckResult, originalMessage, settings) {
     };
   }
 
-  if (decision === 'block') {
+  // Precheck API returns 'deny' for blocked requests
+  if (decision === 'deny' || decision === 'block') {
     return {
       action: 'BLOCK',
       reason: reasons.join(', ') || 'Blocked by GovernsAI',
