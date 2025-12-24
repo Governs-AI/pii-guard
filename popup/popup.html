@@ -2,58 +2,49 @@
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>GovernsAI Extension</title>
+  <title>GovernsAI</title>
   <link rel="stylesheet" href="popup.css">
 </head>
 <body>
   <div id="popup-container">
-    <div class="header">
-      <h1>🛡️ GovernsAI</h1>
-      <div id="status-badge" class="badge">Loading...</div>
-    </div>
+    <header class="header">
+      <div class="logo-section">
+        <img src="../assets/icons/icon32.png" alt="GovernsAI" class="logo-icon" />
+        <span class="logo-text">GovernsAI</span>
+      </div>
+    </header>
     
-    <div class="section">
-      <h2>Status</h2>
-      <div class="status-item">
-        <span>Extension</span>
-        <span id="extension-status" class="value">...</span>
+    <div class="main-content">
+      <div class="status-indicator">
+        <div id="status-dot" class="status-dot"></div>
+        <span id="status-text" class="status-text">Disconnected</span>
       </div>
-      <div class="status-item">
-        <span>Configuration</span>
-        <span id="config-status" class="value">...</span>
+      
+      <div id="connection-timer" class="connection-timer" style="display: none;">
+        <span id="timer-display">00:00:00</span>
       </div>
-      <div class="status-item">
-        <span>Policy Mode</span>
-        <span id="policy-mode" class="value">...</span>
-      </div>
-    </div>
-    
-    <div class="section">
-      <h2>Protected Platforms</h2>
-      <div id="platforms-list" class="platforms">
-        <div class="platform-item">
-          <input type="checkbox" id="platform-chatgpt" value="chatgpt">
-          <label for="platform-chatgpt">ChatGPT</label>
+      
+      <button id="toggle-button" class="toggle-button">
+        <svg class="power-icon" width="32" height="32" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M12 2V12M18 6C20.2091 7.79086 21.5 10.5 21.5 13.5C21.5 18.4706 17.4706 22.5 12.5 22.5C7.52944 22.5 3.5 18.4706 3.5 13.5C3.5 10.5 4.79086 7.79086 7 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </button>
+      
+      <div class="info-section">
+        <div class="info-card">
+          <div class="info-label">Protected Platforms</div>
+          <div class="info-value" id="platforms-count">3</div>
         </div>
-        <div class="platform-item">
-          <input type="checkbox" id="platform-claude" value="claude">
-          <label for="platform-claude">Claude</label>
-        </div>
-        <div class="platform-item">
-          <input type="checkbox" id="platform-gemini" value="gemini">
-          <label for="platform-gemini">Gemini</label>
+        <div class="info-card">
+          <div class="info-label">Status</div>
+          <div class="info-value" id="config-status">Active</div>
         </div>
       </div>
     </div>
     
-    <div class="actions">
-      <button id="open-options" class="btn btn-primary">Settings</button>
-      <button id="toggle-debug" class="btn btn-secondary">Debug Mode</button>
-    </div>
-    
-    <div class="footer">
-      <small>Version 0.1.0</small>
-    </div>
+    <footer class="footer">
+      <a href="#" id="settings-link" class="settings-link">Settings</a>
+    </footer>
   </div>
   <script src="popup.js"></script>
 </body>

@@ -1,5 +1,7 @@
-// Extension popup logic
-// Displays current status and quick actions
+// VPN-style popup logic
+
+let connectionTimer = null;
+let startTime = null;
 
 document.addEventListener('DOMContentLoaded', async () => {
   await loadStatus();
@@ -11,133 +13,144 @@ document.addEventListener('DOMContentLoaded', async () => {
  */
 async function loadStatus() {
   try {
-    // Get status from background worker
-    const status = await chrome.runtime.sendMessage({ type: 'GET_STATUS' });
+    const container = document.getElementById('popup-container');
+    container.classList.add('loading');
     
     // Get settings from storage
     const settings = await chrome.storage.local.get({
       enabled: true,
       apiKey: '',
       orgId: '',
-      policyMode: 'allow',
-      enabledPlatforms: ['chatgpt', 'claude', 'gemini'],
-      debugMode: false
+      enabledPlatforms: ['chatgpt', 'claude', 'gemini']
     });
     
-    // Update status badge
-    const statusBadge = document.getElementById('status-badge');
+    const toggleButton = document.getElementById('toggle-button');
+    const statusText = document.getElementById('status-text');
+    const statusDot = document.getElementById('status-dot');
+    const timerDisplay = document.getElementById('connection-timer');
+    const timerElement = document.getElementById('timer-display');
+    const platformsCount = document.getElementById('platforms-count');
+    const configStatus = document.getElementById('config-status');
+    
+    // Update toggle button state
     if (settings.enabled) {
-      statusBadge.textContent = 'Active';
-      statusBadge.className = 'badge badge-success';
-    } else {
-      statusBadge.textContent = 'Disabled';
-      statusBadge.className = 'badge badge-error';
-    }
-    
-    // Update extension status
-    document.getElementById('extension-status').textContent = 
-      settings.enabled ? '✅ Active' : '⏸️ Disabled';
-    
-    // Update configuration status
-    const isConfigured = !!settings.apiKey;
-    document.getElementById('config-status').textContent = 
-      isConfigured ? '✅ Configured' : '⚠️ Not Configured';
-    
-    // Update policy mode
-    const policyModeText = {
-      'allow': '✅ Allow (Log Only)',
-      'redact': '🔒 Auto-Redact',
-      'block': '🚫 Block PII'
-    }[settings.policyMode] || settings.policyMode;
-    document.getElementById('policy-mode').textContent = policyModeText;
-    
-    // Update platform checkboxes
-    settings.enabledPlatforms.forEach(platform => {
-      const checkbox = document.getElementById(`platform-${platform}`);
-      if (checkbox) {
-        checkbox.checked = true;
+      toggleButton.classList.add('active');
+      statusDot.classList.add('connected');
+      statusText.textContent = 'Connected';
+      timerDisplay.style.display = 'block';
+      
+      // Start or resume timer
+      if (!startTime) {
+        startTime = Date.now();
       }
-    });
-    
-    // Update debug button state
-    const debugBtn = document.getElementById('toggle-debug');
-    if (settings.debugMode) {
-      debugBtn.textContent = 'Debug: ON';
-      debugBtn.classList.add('active');
+      startTimer();
+    } else {
+      toggleButton.classList.remove('active');
+      statusDot.classList.remove('connected');
+      statusText.textContent = 'Disconnected';
+      timerDisplay.style.display = 'none';
+      stopTimer();
+      startTime = null;
     }
+    
+    // Update platforms count
+    platformsCount.textContent = settings.enabledPlatforms?.length || 3;
+    
+    // Update config status
+    if (settings.apiKey) {
+      configStatus.textContent = 'Configured';
+      configStatus.style.color = '#10b981';
+    } else {
+      configStatus.textContent = 'Setup Required';
+      configStatus.style.color = '#f59e0b';
+    }
+    
+    container.classList.remove('loading');
     
   } catch (error) {
     console.error('Error loading status:', error);
-    document.getElementById('extension-status').textContent = '❌ Error';
+    const container = document.getElementById('popup-container');
+    container.classList.remove('loading');
+    container.classList.add('disabled');
+    document.getElementById('status-text').textContent = 'Error';
   }
 }
 
 /**
- * Sets up event listeners for interactive elements
+ * Starts the connection timer
  */
-function setupEventListeners() {
-  // Open options page
-  document.getElementById('open-options').addEventListener('click', () => {
-    chrome.runtime.openOptionsPage();
-  });
+function startTimer() {
+  if (connectionTimer) return;
   
-  // Toggle debug mode
-  document.getElementById('toggle-debug').addEventListener('click', async () => {
-    const settings = await chrome.storage.local.get({ debugMode: false });
-    const newDebugMode = !settings.debugMode;
+  connectionTimer = setInterval(() => {
+    if (!startTime) return;
     
-    await chrome.storage.local.set({ debugMode: newDebugMode });
+    const elapsed = Date.now() - startTime;
+    const hours = Math.floor(elapsed / 3600000);
+    const minutes = Math.floor((elapsed % 3600000) / 60000);
+    const seconds = Math.floor((elapsed % 60000) / 1000);
     
-    // Update localStorage for content scripts
-    localStorage.setItem('governs-ai-debug', newDebugMode.toString());
-    
-    const btn = document.getElementById('toggle-debug');
-    if (newDebugMode) {
-      btn.textContent = 'Debug: ON';
-      btn.classList.add('active');
-    } else {
-      btn.textContent = 'Debug Mode';
-      btn.classList.remove('active');
-    }
-    
-    showMessage('Debug mode ' + (newDebugMode ? 'enabled' : 'disabled'));
-  });
-  
-  // Platform checkboxes
-  const platformCheckboxes = document.querySelectorAll('.platform-item input[type="checkbox"]');
-  platformCheckboxes.forEach(checkbox => {
-    checkbox.addEventListener('change', async (e) => {
-      const platform = e.target.value;
-      const settings = await chrome.storage.local.get({ 
-        enabledPlatforms: ['chatgpt', 'claude', 'gemini'] 
-      });
-      
-      if (e.target.checked) {
-        if (!settings.enabledPlatforms.includes(platform)) {
-          settings.enabledPlatforms.push(platform);
-        }
-      } else {
-        settings.enabledPlatforms = settings.enabledPlatforms.filter(p => p !== platform);
-      }
-      
-      await chrome.storage.local.set({ enabledPlatforms: settings.enabledPlatforms });
-      showMessage(`${platform} ${e.target.checked ? 'enabled' : 'disabled'}`);
-    });
-  });
+    const timerDisplay = document.getElementById('timer-display');
+    timerDisplay.textContent = 
+      `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+  }, 1000);
 }
 
 /**
- * Shows a temporary message
- * @param {string} message - Message to display
+ * Stops the connection timer
  */
-function showMessage(message) {
-  const messageEl = document.createElement('div');
-  messageEl.className = 'message';
-  messageEl.textContent = message;
-  document.getElementById('popup-container').appendChild(messageEl);
+function stopTimer() {
+  if (connectionTimer) {
+    clearInterval(connectionTimer);
+    connectionTimer = null;
+  }
+}
+
+/**
+ * Sets up event listeners
+ */
+function setupEventListeners() {
+  const toggleButton = document.getElementById('toggle-button');
+  const settingsLink = document.getElementById('settings-link');
   
-  setTimeout(() => {
-    messageEl.style.opacity = '0';
-    setTimeout(() => messageEl.remove(), 300);
-  }, 2000);
+  // Toggle extension on/off
+  toggleButton.addEventListener('click', async () => {
+    const isActive = toggleButton.classList.contains('active');
+    const newState = !isActive;
+    
+    try {
+      await chrome.storage.local.set({ enabled: newState });
+      
+      // Update UI immediately for smooth transition
+      const statusText = document.getElementById('status-text');
+      const statusDot = document.getElementById('status-dot');
+      const timerDisplay = document.getElementById('connection-timer');
+      
+      if (newState) {
+        toggleButton.classList.add('active');
+        statusDot.classList.add('connected');
+        statusText.textContent = 'Connected';
+        timerDisplay.style.display = 'block';
+        startTime = Date.now();
+        startTimer();
+      } else {
+        toggleButton.classList.remove('active');
+        statusDot.classList.remove('connected');
+        statusText.textContent = 'Disconnected';
+        timerDisplay.style.display = 'none';
+        stopTimer();
+        startTime = null;
+      }
+      
+    } catch (error) {
+      console.error('Error toggling extension:', error);
+    }
+  });
+  
+  // Open settings page
+  settingsLink.addEventListener('click', (e) => {
+    e.preventDefault();
+    chrome.runtime.openOptionsPage();
+    window.close();
+  });
 }

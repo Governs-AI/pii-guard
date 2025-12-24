@@ -124,14 +124,14 @@ function setupEventListeners() {
         return;
       }
       precheckInput.value = PRESET_URLS[radio.value] || precheckInput.value;
-      setConnectionStatus('Status: Not tested');
+      setConnectionStatus('Not tested');
     });
   });
 
   precheckInput.addEventListener('input', () => {
     const preset = getPresetForUrl(precheckInput.value);
     setPresetSelection(preset);
-    setConnectionStatus('Status: Not tested');
+    setConnectionStatus('Not tested');
     
     // Auto-update policy source based on endpoint
     const policySource = isGovernsAIConsole(precheckInput.value) ? 'console' : 'local';
@@ -214,18 +214,19 @@ async function handleTestConnection() {
   const healthUrl = buildHealthUrl(precheckApiUrl);
 
   if (!getOriginPattern(healthUrl)) {
-    setConnectionStatus('Status: Invalid URL');
+    setConnectionStatus('Invalid URL', 'error');
     return;
   }
 
   const hasPermission = await ensureHostPermission(healthUrl);
   if (!hasPermission) {
-    setConnectionStatus('Status: Permission denied');
+    setConnectionStatus('Permission denied', 'error');
     return;
   }
 
   testButton.disabled = true;
-  connectionStatus.textContent = 'Status: Testing...';
+    connectionStatus.textContent = 'Testing...';
+    connectionStatus.className = 'status';
 
   try {
     const headers = {};
@@ -240,31 +241,37 @@ async function handleTestConnection() {
 
     const response = await fetch(healthUrl, { method: 'GET', headers });
     if (response.ok) {
-      setConnectionStatus('Status: Connected');
+      setConnectionStatus('Connected', 'success');
     } else {
-      setConnectionStatus(`Status: Failed (${response.status})`);
+      setConnectionStatus(`Failed (${response.status})`, 'error');
     }
   } catch (error) {
-    setConnectionStatus('Status: Connection error');
+    setConnectionStatus('Connection error', 'error');
   } finally {
     testButton.disabled = false;
   }
 }
 
-function setConnectionStatus(message) {
+function setConnectionStatus(message, type = '') {
   const connectionStatus = document.getElementById('connection-status');
   connectionStatus.textContent = message;
+  connectionStatus.className = 'status';
+  if (type) {
+    connectionStatus.classList.add(type);
+  }
 }
 
 function setSaveStatus(message, isError = false) {
   const saveStatus = document.getElementById('save-status');
   saveStatus.textContent = message;
-  saveStatus.style.color = isError ? '#b42318' : '#0f3d91';
+  saveStatus.className = 'status';
+  saveStatus.classList.add(isError ? 'error' : 'success');
 
   if (!isError) {
     setTimeout(() => {
       if (saveStatus.textContent === message) {
         saveStatus.textContent = '';
+        saveStatus.className = 'status';
       }
     }, 2000);
   }

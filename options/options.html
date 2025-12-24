@@ -2,14 +2,18 @@
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>GovernsAI Extension Settings</title>
+  <title>GovernsAI Settings</title>
   <link rel="stylesheet" href="options.css">
 </head>
 <body>
   <div id="options-container">
-    <header>
-      <h1>GovernsAI Settings</h1>
-      <p class="subtitle">Configure the Precheck endpoint and dashboard logging.</p>
+    <header class="header">
+      <div class="header-content">
+        <div class="logo-section">
+          <img src="../assets/icons/icon32.png" alt="GovernsAI" class="logo-icon" />
+          <h1>GovernsAI Settings</h1>
+        </div>
+      </div>
     </header>
     <form id="settings-form">
       <section class="card">
@@ -27,12 +31,12 @@
             Custom URL
           </label>
         </div>
-        <p class="hint">For local development, use Custom URL with <code>http://localhost:8000/api/v1</code></p>
+        <!-- <p class="hint">For local development, use Custom URL with <code>http://localhost:8000/api/v1</code></p> -->
         <div class="actions">
           <button id="test-connection" type="button" class="btn">Test Connection</button>
-          <span id="connection-status" class="status">Status: Not tested</span>
+          <span id="connection-status" class="status">Not tested</span>
         </div>
-        <p class="hint">Connection test uses <code>/api/v1/health</code>.</p>
+        <p class="hint mt-10">Connection test uses <code>/api/v1/health</code>.</p>
       </section>
 
       <section class="card">
@@ -49,7 +53,7 @@
         
         <div class="form-group">
           <label class="label">Action on PII Detection</label>
-          <div class="radio-group">
+          <div class="radio-group radio-group-inline">
             <label class="radio">
               <input type="radio" name="policy-mode" value="block">
               Block Message
@@ -124,11 +128,12 @@
         </label>
       </section> -->
 
-      <div class="actions footer-actions">
-        <button id="save-settings" type="submit" class="btn primary">Save Settings</button>
-        <span id="save-status" class="status" role="status" aria-live="polite"></span>
-      </div>
     </form>
+    
+    <div class="actions footer-actions">
+      <button id="save-settings" type="submit" form="settings-form" class="btn primary">Save Settings</button>
+      <span id="save-status" class="status" role="status" aria-live="polite"></span>
+    </div>
   </div>
   <script src="options.js"></script>
 </body>
