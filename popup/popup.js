@@ -16,13 +16,19 @@ async function loadStatus() {
     const container = document.getElementById('popup-container');
     container.classList.add('loading');
     
-    // Get settings from storage
-    const settings = await chrome.storage.local.get({
-      enabled: true,
-      apiKey: '',
-      orgId: '',
-      enabledPlatforms: ['chatgpt', 'claude', 'gemini']
-    });
+    // Get settings from storage - read all settings to ensure we get the actual apiKey value
+    const allSettings = await chrome.storage.local.get(null);
+    const precheckApiUrl = allSettings.precheckApiUrl || 'https://app.governsai.com/api/v1';
+    const policySource = allSettings.policySource || (isGovernsAIConsole(precheckApiUrl) ? 'console' : 'local');
+    
+    const settings = {
+      enabled: allSettings.enabled !== undefined ? allSettings.enabled : true,
+      apiKey: allSettings.apiKey || '',
+      orgId: allSettings.orgId || '',
+      enabledPlatforms: allSettings.enabledPlatforms || ['chatgpt', 'claude', 'gemini'],
+      policySource: policySource,
+      precheckApiUrl: precheckApiUrl
+    };
     
     const toggleButton = document.getElementById('toggle-button');
     const statusText = document.getElementById('status-text');
@@ -57,12 +63,30 @@ async function loadStatus() {
     platformsCount.textContent = settings.enabledPlatforms?.length || 3;
     
     // Update config status
-    if (settings.apiKey) {
-      configStatus.textContent = 'Configured';
-      configStatus.style.color = '#10b981';
+    // For local mode, API key is not required - just need precheckApiUrl configured
+    // For console mode, API key is required
+    const hasApiKey = settings.apiKey && settings.apiKey.trim().length > 0;
+    const isLocalMode = settings.policySource === 'local';
+    const hasPrecheckUrl = settings.precheckApiUrl && settings.precheckApiUrl.trim().length > 0;
+    
+    if (isLocalMode) {
+      // Local mode: configured if precheckApiUrl is set (API key optional)
+      if (hasPrecheckUrl) {
+        configStatus.textContent = 'Configured';
+        configStatus.style.color = '#10b981';
+      } else {
+        configStatus.textContent = 'Setup Required';
+        configStatus.style.color = '#f59e0b';
+      }
     } else {
-      configStatus.textContent = 'Setup Required';
-      configStatus.style.color = '#f59e0b';
+      // Console mode: API key is required
+      if (hasApiKey) {
+        configStatus.textContent = 'Configured';
+        configStatus.style.color = '#10b981';
+      } else {
+        configStatus.textContent = 'Setup Required';
+        configStatus.style.color = '#f59e0b';
+      }
     }
     
     container.classList.remove('loading');
@@ -153,4 +177,16 @@ function setupEventListeners() {
     chrome.runtime.openOptionsPage();
     window.close();
   });
+}
+
+/**
+ * Checks if the URL is the GovernsAI Console URL
+ * @param {string} url - URL to check
+ * @returns {boolean} True if it's the GovernsAI console URL
+ */
+function isGovernsAIConsole(url) {
+  if (!url) return false;
+  const normalized = url.trim().toLowerCase();
+  return normalized.includes('app.governsai.com') || 
+         normalized.includes('governsai.com/api');
 }

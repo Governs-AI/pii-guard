@@ -40,14 +40,65 @@ function showNotification(message, type = 'info', options = {}) {
     content += '\n\n' + logText;
   }
   
-  notification.textContent = content;
+  // Create content wrapper
+  const contentWrapper = document.createElement('div');
+  contentWrapper.textContent = content;
+  Object.assign(contentWrapper.style, {
+    flex: '1',
+    paddingRight: '8px',
+    whiteSpace: 'pre-wrap'
+  });
   
-  // Styling
+  // Create close button
+  const closeButton = document.createElement('button');
+  closeButton.innerHTML = `
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M12 4L4 12M4 4L12 12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+  `;
+  Object.assign(closeButton.style, {
+    background: 'none',
+    border: 'none',
+    color: 'white',
+    cursor: 'pointer',
+    padding: '4px',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: '0',
+    opacity: '0.9',
+    transition: 'opacity 0.2s',
+    borderRadius: '4px'
+  });
+  
+  // Hover effect for close button
+  closeButton.addEventListener('mouseenter', () => {
+    closeButton.style.opacity = '1';
+    closeButton.style.backgroundColor = 'rgba(255, 255, 255, 0.2)';
+  });
+  closeButton.addEventListener('mouseleave', () => {
+    closeButton.style.opacity = '0.9';
+    closeButton.style.backgroundColor = 'transparent';
+  });
+  
+  // Dismiss function
+  const dismissNotification = () => {
+    notification.style.animation = 'slideOut 0.3s ease-out';
+    setTimeout(() => notification.remove(), 300);
+  };
+  
+  // Add click handler to close button
+  closeButton.addEventListener('click', (e) => {
+    e.stopPropagation(); // Prevent triggering notification click
+    dismissNotification();
+  });
+  
+  // Set up notification container structure
   Object.assign(notification.style, {
     position: 'fixed',
     top: '20px',
     right: '20px',
-    padding: '16px 24px',
+    padding: '16px 20px 16px 24px',
     borderRadius: '8px',
     backgroundColor: type === 'error' ? '#dc3545' : type === 'warning' ? '#ffc107' : type === 'success' ? '#28a745' : '#0066cc',
     color: 'white',
@@ -58,15 +109,22 @@ function showNotification(message, type = 'info', options = {}) {
     maxWidth: '400px',
     maxHeight: '400px',
     overflowY: 'auto',
-    whiteSpace: 'pre-wrap',
     animation: 'slideIn 0.3s ease-out',
-    cursor: 'pointer'
+    display: 'flex',
+    alignItems: 'flex-start',
+    gap: '8px'
   });
   
-  // Add click to dismiss
-  notification.addEventListener('click', () => {
-    notification.style.animation = 'slideOut 0.3s ease-out';
-    setTimeout(() => notification.remove(), 300);
+  // Append content and close button
+  notification.appendChild(contentWrapper);
+  notification.appendChild(closeButton);
+  
+  // Add click to dismiss (on notification body, not close button)
+  notification.addEventListener('click', (e) => {
+    // Only dismiss if clicking on the notification body, not the close button
+    if (e.target === notification || e.target === contentWrapper) {
+      dismissNotification();
+    }
   });
   
   document.body.appendChild(notification);
