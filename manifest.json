@@ -11,7 +11,6 @@
   },
   "permissions": [
     "storage",
-    "activeTab",
     "permissions"
   ],
   "host_permissions": [
@@ -25,8 +24,10 @@
     "http://127.0.0.1/*"
   ],
   "optional_host_permissions": [
-    "https://*/*",
-    "http://*/*"
+    "https://*.governsai.com/*",
+    "https://*.governs.ai/*",
+    "http://localhost/*",
+    "http://127.0.0.1/*"
   ],
   "background": {
     "service_worker": "background/service-worker.js"

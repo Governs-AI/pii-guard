@@ -11,9 +11,16 @@ async function sendToBackground(type, data) {
   return new Promise((resolve, reject) => {
     chrome.runtime.sendMessage({ type, ...data }, (response) => {
       if (chrome.runtime.lastError) {
-        reject(chrome.runtime.lastError);
+        resolve({
+          action: 'BLOCK',
+          reason: 'GovernsAI background service unavailable. Message blocked for safety.',
+          error: chrome.runtime.lastError.message || 'Runtime connection error'
+        });
       } else {
-        resolve(response);
+        resolve(response || {
+          action: 'BLOCK',
+          reason: 'No response from GovernsAI background service. Message blocked for safety.'
+        });
       }
     });
   });
@@ -180,4 +187,3 @@ function waitForElement(selector, timeout = 5000) {
     }, timeout);
   });
 }
-

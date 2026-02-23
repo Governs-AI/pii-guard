@@ -4,6 +4,7 @@
 importScripts('precheck-client.js', 'policy-engine.js');
 
 const DEFAULT_DASHBOARD_URL = 'https://app.governsai.com';
+const FAIL_CLOSED_REASON = 'Precheck unavailable. Message blocked to prevent potential PII exposure.';
 
 console.log('[GovernsAI] Background service worker initialized');
 
@@ -16,10 +17,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       .then(sendResponse)
       .catch(error => {
         console.error('[GovernsAI] Error handling message:', error);
-        sendResponse({
-          action: 'ALLOW',
-          error: error.message
-        });
+        sendResponse(buildFailClosedDecision(request?.message, FAIL_CLOSED_REASON, error.message));
       });
     
     // Return true to indicate async response
@@ -71,8 +69,16 @@ async function handleInterceptedMessage(request, sender) {
       console.log('[GovernsAI] Precheck result:', precheckResult);
     } catch (error) {
       console.error('[GovernsAI] Precheck API error:', error);
-      // If API fails, use fallback policy
-      precheckResult = { hasPII: false, entities: [] };
+      return buildFailClosedDecision(message, FAIL_CLOSED_REASON, error.message);
+    }
+
+    if (precheckResult?.fallback) {
+      console.warn('[GovernsAI] Precheck fallback mode detected; applying fail-closed policy');
+      return buildFailClosedDecision(
+        message,
+        FAIL_CLOSED_REASON,
+        'Fallback PII detection is disabled in fail-closed mode'
+      );
     }
     
     let decision = applyApiDecision(precheckResult, message, settings);
@@ -108,12 +114,19 @@ async function handleInterceptedMessage(request, sender) {
     
   } catch (error) {
     console.error('[GovernsAI] Unexpected error:', error);
-    return {
-      action: 'ALLOW',
-      message,
-      error: error.message
-    };
+    return buildFailClosedDecision(message, FAIL_CLOSED_REASON, error.message);
   }
+}
+
+function buildFailClosedDecision(originalMessage, reason, errorMessage = '') {
+  return {
+    action: 'BLOCK',
+    reason: reason || FAIL_CLOSED_REASON,
+    originalMessage: originalMessage || '',
+    entities: [],
+    redactionLog: [],
+    ...(errorMessage ? { error: errorMessage } : {})
+  };
 }
 
 /**

@@ -30,6 +30,15 @@ AI chat interfaces make it too easy to paste sensitive data. This extension inte
 Click the extension icon → Settings:
 - **Local mode**: Runs on `localhost:8000` (privacy-first, no data leaves your machine, no API key required)
 - **Console mode**: Uses GovernsAI dashboard at `app.governsai.com` (requires API key for logging/policies)
+- **Allowed endpoint hosts**: `*.governsai.com`, `*.governs.ai`, `localhost`, `127.0.0.1`
+
+## Security Defaults
+
+- **Fail-closed on Precheck errors**: If Precheck is unavailable or the extension runtime fails, messages are blocked instead of sent.
+- **Least-privilege host permissions**: The extension no longer requests wildcard host access.
+- **Manifest V3**: Uses a background service worker and MV3-compatible APIs.
+
+See `MV3_COMPLIANCE.md` for the compliance checklist.
 
 ## How it works
 ```

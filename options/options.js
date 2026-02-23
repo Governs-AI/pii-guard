@@ -6,6 +6,12 @@ const DEFAULT_DASHBOARD_URL = 'https://app.governsai.com';
 const PRESET_URLS = {
   console: DEFAULT_PRECHECK_BASE_URL
 };
+const ALLOWED_ENDPOINT_HOST_PATTERNS = [
+  /(^|\.)governsai\.com$/i,
+  /(^|\.)governs\.ai$/i,
+  /^localhost$/i,
+  /^127\.0\.0\.1$/
+];
 
 const STORAGE_DEFAULTS = {
   precheckApiUrl: DEFAULT_PRECHECK_BASE_URL,
@@ -177,7 +183,7 @@ async function handleSave(event) {
   };
 
   if (!getOriginPattern(precheckApiUrl)) {
-    setSaveStatus('Invalid Precheck URL.', true);
+    setSaveStatus(getEndpointValidationError(precheckApiUrl), true);
     return;
   }
 
@@ -189,7 +195,7 @@ async function handleSave(event) {
 
   if (settings.enableDashboardLogging && dashboardInput) {
     if (!getOriginPattern(dashboardUrl)) {
-      setSaveStatus('Invalid Dashboard URL.', true);
+      setSaveStatus(getEndpointValidationError(dashboardUrl), true);
       return;
     }
     const dashboardPermission = await ensureHostPermission(dashboardUrl);
@@ -214,7 +220,7 @@ async function handleTestConnection() {
   const healthUrl = buildHealthUrl(precheckApiUrl);
 
   if (!getOriginPattern(healthUrl)) {
-    setConnectionStatus('Invalid URL', 'error');
+    setConnectionStatus(getEndpointValidationError(healthUrl), 'error');
     return;
   }
 
@@ -316,6 +322,25 @@ function setPresetSelection(preset) {
   });
 }
 
+function isAllowedEndpointHost(hostname) {
+  return ALLOWED_ENDPOINT_HOST_PATTERNS.some((pattern) => pattern.test(hostname || ''));
+}
+
+function getEndpointValidationError(url) {
+  try {
+    const parsed = new URL(url);
+    if (!['https:', 'http:'].includes(parsed.protocol)) {
+      return 'Only http/https endpoints are allowed.';
+    }
+    if (!isAllowedEndpointHost(parsed.hostname)) {
+      return 'Endpoint must be a governsai.com/governs.ai domain or localhost.';
+    }
+    return 'Invalid endpoint URL.';
+  } catch (error) {
+    return 'Invalid endpoint URL.';
+  }
+}
+
 function ensureHostPermission(url) {
   const origin = getOriginPattern(url);
   if (!origin) {
@@ -339,6 +364,12 @@ function ensureHostPermission(url) {
 function getOriginPattern(url) {
   try {
     const parsed = new URL(url);
+    if (!['https:', 'http:'].includes(parsed.protocol)) {
+      return '';
+    }
+    if (!isAllowedEndpointHost(parsed.hostname)) {
+      return '';
+    }
     return `${parsed.origin}/*`;
   } catch (error) {
     return '';

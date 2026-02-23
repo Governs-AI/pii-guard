@@ -213,13 +213,12 @@
           break;
           
         default:
-          debugLog('Unknown action, allowing message');
-          sendCallback(message);
+          debugLog('Unknown action, blocking message');
+          showNotification('Message blocked: Unknown policy action', 'error');
       }
     } catch (error) {
       console.error('[GovernsAI] Error processing message:', error);
-      showNotification('Error processing message, sending anyway', 'warning');
-      sendCallback(message);
+      showNotification('GovernsAI unavailable. Message blocked for safety.', 'error');
     } finally {
       isProcessing = false;
     }
