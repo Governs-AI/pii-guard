@@ -11,40 +11,45 @@
   let activeInput = null;
   
   /**
-   * Intercepts the message submission
-   * @param {string} message - The message text
-   * @param {Function} sendCallback - Original send function
+   * Intercepts the message submission, scanning both text and any attached images.
+   * When images are present the request is routed as INTERCEPT_IMAGE so the
+   * background can run OCR before feeding the extracted text to Precheck.
+   *
+   * @param {string}   message      - The text content of the input
+   * @param {string[]} images       - Base64 data URLs of attached images (may be empty)
+   * @param {Function} sendCallback - Called with the (possibly redacted) text to send
    */
-  async function interceptMessage(message, sendCallback) {
+  async function interceptMessage(message, images, sendCallback) {
     if (isProcessing) {
       debugLog('Already processing a message, skipping');
       return;
     }
-    
+
     isProcessing = true;
-    debugLog('Intercepting message:', message);
-    
+    debugLog('Intercepting message:', message, '| images:', images.length);
+
     try {
-      // Send to background worker for processing
-      const response = await sendToBackground('INTERCEPT_MESSAGE', {
+      const hasImages = images.length > 0;
+      const messageType = hasImages ? 'INTERCEPT_IMAGE' : 'INTERCEPT_MESSAGE';
+
+      const response = await sendToBackground(messageType, {
         platform: 'chatgpt',
         message: message,
+        images: images,
         url: window.location.href,
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
       });
-      
+
       debugLog('Background response:', response);
-      
-      // Handle response based on action
+
       switch (response.action) {
         case 'ALLOW':
           debugLog('Message allowed, proceeding with original send');
           sendCallback(message);
           break;
-          
+
         case 'REDACT':
           debugLog('Message redacted:', response.redactedMessage);
-          debugLog('Redaction log:', response.redactionLog);
           showNotification(
             `Redacted ${response.entities?.length || 0} PII entities`,
             'warning',
@@ -52,12 +57,20 @@
           );
           sendCallback(response.redactedMessage);
           break;
-          
+
         case 'BLOCK':
           debugLog('Message blocked:', response.reason);
-          showNotification(`Message blocked: ${response.reason}`, 'error');
+          if (response.isImageBlock) {
+            showNotification(
+              `Image blocked: sensitive information detected in attachment.`,
+              'error',
+              { isImageBlock: true }
+            );
+          } else {
+            showNotification(`Message blocked: ${response.reason}`, 'error');
+          }
           break;
-          
+
         default:
           debugLog('Unknown action, blocking message');
           showNotification('Message blocked: Unknown policy action', 'error');
@@ -68,6 +81,68 @@
     } finally {
       isProcessing = false;
     }
+  }
+
+  /**
+   * Extracts base64 JPEG data URLs from any image attachments visible in the
+   * input area container.  Only blob: and data: src images are considered —
+   * these are user-uploaded files, not UI chrome.  Canvas taint errors (rare
+   * cross-origin cases) are caught and the image is silently skipped.
+   *
+   * @param {Element} textarea - The active input element
+   * @returns {string[]} Array of base64 data URLs (JPEG, ≤2 MB each)
+   */
+  function extractAttachedImages(textarea) {
+    const images = [];
+    if (!textarea) return images;
+
+    // Walk up from the textarea to find its enclosing form or input container.
+    // ChatGPT nests the textarea several divs deep inside the prompt form.
+    let container = textarea;
+    for (let i = 0; i < 7; i++) {
+      if (!container.parentElement) break;
+      container = container.parentElement;
+      if (container.tagName === 'FORM') break;
+    }
+
+    const allImgs = container.querySelectorAll('img');
+    for (const img of allImgs) {
+      const src = img.src || img.getAttribute('src') || '';
+
+      // Only process user-uploaded blobs or inline data URIs.
+      if (!src.startsWith('blob:') && !src.startsWith('data:image/')) continue;
+
+      // Skip tiny images that are likely UI icons, not file attachments.
+      const rect = img.getBoundingClientRect();
+      if (rect.width < 20 || rect.height < 20) continue;
+
+      try {
+        const w = img.naturalWidth || Math.round(rect.width);
+        const h = img.naturalHeight || Math.round(rect.height);
+        if (w === 0 || h === 0) continue;
+
+        const canvas = document.createElement('canvas');
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, w, h);
+
+        // toDataURL throws if the canvas is tainted by a cross-origin image.
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+
+        // A non-empty JPEG will always be longer than a few hundred chars.
+        if (dataUrl.length > 200) {
+          images.push(dataUrl);
+          debugLog('Captured image attachment:', dataUrl.length, 'chars');
+        }
+      } catch (err) {
+        // Canvas taint or security error — skip this image.
+        debugLog('Could not capture image (skipped):', err.message);
+      }
+    }
+
+    debugLog('extractAttachedImages found', images.length, 'image(s)');
+    return images;
   }
   
   /**
@@ -94,15 +169,15 @@
           }
           if (e.key === 'Enter' && !e.shiftKey) {
             const message = textarea.value || textarea.textContent;
-            
+
             if (message.trim()) {
               e.preventDefault();
               e.stopPropagation();
-              
-              await interceptMessage(message, (finalMessage) => {
+
+              const images = extractAttachedImages(textarea);
+              await interceptMessage(message, images, (finalMessage) => {
                 applyMessageToInput(textarea, finalMessage);
-                
-                // Trigger the original send
+
                 const sendButton = document.querySelector('button[data-testid="send-button"], button[aria-label*="Send"]');
                 triggerSend(sendButton, textarea);
               });
@@ -129,8 +204,9 @@
               if (message && message.trim()) {
                 e.preventDefault();
                 e.stopPropagation();
-                
-                await interceptMessage(message, (finalMessage) => {
+
+                const images = extractAttachedImages(textarea);
+                await interceptMessage(message, images, (finalMessage) => {
                   applyMessageToInput(textarea, finalMessage);
                   triggerSend(sendButton, textarea);
                 });

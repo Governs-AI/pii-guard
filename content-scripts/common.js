@@ -38,7 +38,12 @@ function showNotification(message, type = 'info', options = {}) {
   
   // Build notification content
   let content = message;
-  
+
+  // Add image-block hint so the user knows how to resolve the block.
+  if (options.isImageBlock) {
+    content += '\n\nRemove the attached image to proceed.';
+  }
+
   // Add redaction log if provided
   if (options.redactionLog && options.redactionLog.length > 0) {
     const logText = options.redactionLog
