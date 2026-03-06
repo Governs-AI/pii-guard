@@ -1,0 +1,16 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>GovernsAI OCR Worker</title>
+</head>
+<body>
+  <!--
+    Offscreen document for Tesseract.js OCR processing.
+    This page is never visible to users; it exists solely to provide the
+    DOM/Canvas context that Tesseract.js requires (unavailable in MV3 service workers).
+    Loaded by background/service-worker.js via chrome.offscreen.createDocument().
+  -->
+  <script src="./ocr-worker.bundle.js"></script>
+</body>
+</html>

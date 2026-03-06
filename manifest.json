@@ -11,7 +11,8 @@
   },
   "permissions": [
     "storage",
-    "permissions"
+    "permissions",
+    "offscreen"
   ],
   "host_permissions": [
     "https://chat.openai.com/*",
@@ -21,7 +22,14 @@
     "https://gemini.google.com/*",
     "https://app.governsai.com/*",
     "http://localhost/*",
-    "http://127.0.0.1/*"
+    "http://127.0.0.1/*",
+    "https://cdn.jsdelivr.net/*"
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["vendor/tesseract/*"],
+      "matches": ["<all_urls>"]
+    }
   ],
   "optional_host_permissions": [
     "https://*.governsai.com/*",
