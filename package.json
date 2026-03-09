@@ -1,0 +1,18 @@
+{
+  "name": "pii-guard",
+  "version": "0.1.0",
+  "description": "GovernsAI browser extension – client-side PII guard for AI chat platforms",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "vite build",
+    "build:watch": "vite build --watch"
+  },
+  "dependencies": {
+    "tesseract.js": "^5.1.1"
+  },
+  "devDependencies": {
+    "vite": "^5.4.2",
+    "vite-plugin-static-copy": "^1.0.6"
+  }
+}

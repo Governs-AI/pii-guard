@@ -11,7 +11,7 @@ console.log('[GovernsAI] Background service worker initialized');
 // Listen for messages from content scripts
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   console.log('[GovernsAI] Received message:', request.type);
-  
+
   if (request.type === 'INTERCEPT_MESSAGE') {
     handleInterceptedMessage(request, sender)
       .then(sendResponse)
@@ -19,11 +19,23 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         console.error('[GovernsAI] Error handling message:', error);
         sendResponse(buildFailClosedDecision(request?.message, FAIL_CLOSED_REASON, error.message));
       });
-    
+
     // Return true to indicate async response
     return true;
   }
-  
+
+  if (request.type === 'INTERCEPT_IMAGE') {
+    handleInterceptedImage(request, sender)
+      .then(sendResponse)
+      .catch(error => {
+        console.error('[GovernsAI] Error handling image:', error);
+        // Fail-closed: if image processing errors we block rather than leak.
+        sendResponse(buildFailClosedDecision('', FAIL_CLOSED_REASON, error.message));
+      });
+
+    return true;
+  }
+
   if (request.type === 'GET_STATUS') {
     getExtensionStatus()
       .then(sendResponse)
@@ -31,7 +43,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         console.error('[GovernsAI] Error getting status:', error);
         sendResponse({ enabled: false, error: error.message });
       });
-    
+
     return true;
   }
 });
@@ -116,6 +128,144 @@ async function handleInterceptedMessage(request, sender) {
     console.error('[GovernsAI] Unexpected error:', error);
     return buildFailClosedDecision(message, FAIL_CLOSED_REASON, error.message);
   }
+}
+
+/**
+ * Handles an image attachment intercepted by a content script.
+ * Runs OCR on each image via the offscreen document, feeds the extracted
+ * text into the existing Precheck pipeline, and returns ALLOW or BLOCK.
+ * Images cannot be redacted (unlike text), so REDACT is mapped to BLOCK.
+ *
+ * @param {object} request - { platform, message, images: string[], url, timestamp }
+ * @param {object} sender
+ * @returns {Promise<object>} Decision object with action ALLOW or BLOCK
+ */
+async function handleInterceptedImage(request, sender) {
+  const { platform, message, images = [], url, timestamp } = request;
+
+  console.log(`[GovernsAI] Processing image attachment from ${platform}: ${images.length} image(s)`);
+
+  try {
+    const settings = await getSettings();
+
+    if (!settings.enabled) {
+      console.log('[GovernsAI] Extension disabled, allowing image');
+      return { action: 'ALLOW' };
+    }
+
+    if (settings.enabledPlatforms && !settings.enabledPlatforms.includes(platform)) {
+      console.log(`[GovernsAI] Platform ${platform} not monitored, allowing image`);
+      return { action: 'ALLOW' };
+    }
+
+    // Run OCR on all attached images using the offscreen document.
+    let ocrResult;
+    try {
+      await ensureOffscreenDocument();
+      ocrResult = await runOCR(images);
+    } catch (err) {
+      console.error('[GovernsAI] OCR pipeline failed:', err);
+      return buildFailClosedDecision('', FAIL_CLOSED_REASON, err.message);
+    }
+
+    const extractedText = (ocrResult.texts || []).join('\n').trim();
+    console.log('[GovernsAI] OCR extracted text (first 100 chars):', extractedText.slice(0, 100));
+
+    // No text found in images — nothing to scan.
+    if (!extractedText) {
+      console.log('[GovernsAI] No text found in images, allowing send');
+      return { action: 'ALLOW', reason: 'No text detected in attached images' };
+    }
+
+    // Re-use the existing Precheck/policy pipeline with the extracted text.
+    let precheckResult;
+    try {
+      precheckResult = await scanForPII(extractedText, settings);
+    } catch (err) {
+      console.error('[GovernsAI] Precheck API error (image OCR text):', err);
+      return buildFailClosedDecision('', FAIL_CLOSED_REASON, err.message);
+    }
+
+    if (precheckResult?.fallback) {
+      console.warn('[GovernsAI] Precheck fallback detected for image text; applying fail-closed policy');
+      return buildFailClosedDecision('', FAIL_CLOSED_REASON, 'Fallback PII detection is disabled in fail-closed mode');
+    }
+
+    // For images we only ALLOW or BLOCK — redaction of pixel data is out of scope.
+    let decision = applyApiDecision(precheckResult, extractedText, settings);
+    if (!decision) {
+      decision = evaluatePolicy(precheckResult, settings);
+    }
+
+    const imageDecision = {
+      action: decision.action === 'REDACT' ? 'BLOCK' : decision.action,
+      reason: decision.action === 'REDACT'
+        ? `Image contains sensitive information: ${decision.reason}`
+        : decision.reason,
+      entities: decision.entities || [],
+      isImageBlock: true,
+    };
+
+    console.log(`[GovernsAI] Image decision: ${imageDecision.action}`);
+
+    await logInteraction({
+      platform,
+      url,
+      timestamp,
+      messageLength: extractedText.length,
+      hasPII: precheckResult.hasPII,
+      entities: precheckResult.entities,
+      action: imageDecision.action,
+      settings,
+    });
+
+    return imageDecision;
+
+  } catch (error) {
+    console.error('[GovernsAI] Unexpected error during image processing:', error);
+    return buildFailClosedDecision('', FAIL_CLOSED_REASON, error.message);
+  }
+}
+
+/**
+ * Ensures a single offscreen document exists for OCR processing.
+ * MV3 allows at most one offscreen document per extension at a time.
+ */
+async function ensureOffscreenDocument() {
+  // chrome.offscreen.hasDocument() returns true if any offscreen doc is open.
+  const existing = await chrome.offscreen.hasDocument();
+  if (existing) return;
+
+  await chrome.offscreen.createDocument({
+    url: 'offscreen/ocr-worker.html',
+    reasons: [chrome.offscreen.Reason.BLOBS],
+    justification: 'Run Tesseract.js OCR on image attachments to detect PII before sending',
+  });
+
+  console.log('[GovernsAI] Offscreen OCR document created');
+}
+
+/**
+ * Sends images to the offscreen document for OCR and returns extracted text.
+ *
+ * @param {string[]} images - Array of base64 data URLs
+ * @returns {Promise<{ texts: string[], confidence: number[] }>}
+ */
+function runOCR(images) {
+  return new Promise((resolve, reject) => {
+    chrome.runtime.sendMessage(
+      { type: 'PROCESS_IMAGE', target: 'ocr-worker', images },
+      (response) => {
+        if (chrome.runtime.lastError) {
+          return reject(new Error(chrome.runtime.lastError.message));
+        }
+        if (response?.error) {
+          return reject(new Error(response.error));
+        }
+        resolve(response || { texts: [], confidence: [] });
+      }
+    );
+  });
 }
 
 function buildFailClosedDecision(originalMessage, reason, errorMessage = '') {

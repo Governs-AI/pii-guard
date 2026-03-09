@@ -17,15 +17,17 @@ AI chat interfaces make it too easy to paste sensitive data. This extension inte
 - ✅ Intercepts ChatGPT, Claude, Gemini
 - ✅ PII detection via Precheck API
 - ✅ Auto-redaction
+- ✅ Image attachment scanning (OCR-based, client-side)
 - ✅ Dashboard logging (optional)
 - 🚧 Chrome Web Store submission pending
 
 ## Install (Dev Mode)
 
 1. Clone this repo
-2. Chrome → `chrome://extensions/` → Enable Developer Mode
-3. Load unpacked → select this folder
-4. Done
+2. `npm install && npm run build`
+3. Chrome → `chrome://extensions/` → Enable Developer Mode
+4. Load unpacked → select this folder
+5. Done
 
 **Note**: Local mode works without an API key if you run Precheck locally. Console mode requires a free API key from governsai.com.
 
@@ -45,6 +47,8 @@ Click the extension icon → Settings:
 See `MV3_COMPLIANCE.md` for the compliance checklist.
 
 ## How it works
+
+### Text messages
 ```
 User types message → Extension intercepts → Precheck API scans → Policy applied → Action taken
      ↓                      ↓                       ↓                  ↓              ↓
@@ -56,6 +60,25 @@ User types message → Extension intercepts → Precheck API scans → Policy ap
 1. **Intercept**: Extension catches your message before it's sent to ChatGPT, Claude, or Gemini
 2. **Analyze**: Precheck API scans for sensitive information (PII) and applies your organization's policies
 3. **Protect**: Based on policy, the message is either allowed, has PII redacted, or is blocked entirely
+
+### Image attachments (ChatGPT)
+
+Images are scanned before they're sent using a fully client-side OCR pipeline — no pixel data leaves your browser.
+
+```
+User attaches image → Extension extracts image at Send time → OCR (Tesseract.js, offscreen doc)
+        ↓                                                              ↓
+  ChatGPT file                                               Text extracted from image
+  attachment                                                            ↓
+                                                             Precheck API scans text
+                                                                        ↓
+                                                              Allow / Block (no redact)
+```
+
+- **OCR runs entirely in the browser** via a hidden [MV3 Offscreen Document](https://developer.chrome.com/docs/extensions/reference/api/offscreen) — Tesseract.js never sends image data anywhere
+- Images with no detectable text pass through without being blocked
+- Images larger than 2 MB are skipped (OCR not attempted)
+- Because pixel-level redaction is not feasible, the only actions for images are **Allow** or **Block** — if PII is found, the user is asked to remove the attachment
 
 ## License
 
